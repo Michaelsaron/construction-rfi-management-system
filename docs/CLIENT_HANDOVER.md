@@ -1,0 +1,27 @@
+# Client Handover Checklist
+
+- Client-controlled Admin email created
+- Separate developer/support user created or disabled after handover
+- User roles reviewed
+- Project data verified
+- Work Items / Descriptions / Tests / Material Sources validated
+- Reviewer Rules approved by RE/ARE
+- Official logo and report form approved
+- RFI Summary workflow tested
+- RFI activation tested
+- Reviewer assignment tested
+- My Inspections tested
+- Required-review blocking tested
+- RE/ARE override tested with reason
+- Rejected RFI revision tested
+- Attachments tested on mobile and desktop
+- Daily Progress workflow tested
+- RFI Register filters tested
+- PDF / Excel outputs signed off
+- Audit Log verified
+- Notifications verified
+- Historical migration reconciliation signed off
+- HTTPS enabled
+- Backup schedule enabled
+- Restore test completed
+- Client UAT signed off

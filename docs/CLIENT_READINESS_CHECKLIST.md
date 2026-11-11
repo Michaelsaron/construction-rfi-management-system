@@ -1,0 +1,21 @@
+# Client readiness checklist
+- Contractor creates Draft Summary and multiple RFIs
+- Submitted Summary locks
+- RE/ARE can Return Summary and Activate RFI
+- Reviewer assignment and My Inspections work
+- Structured recommendation/comment works
+- Final decision blocks until required reviews complete unless override reason is recorded
+- Rejected RFI creates next revision
+- Attachments work for RFI/Summary
+- Daily Progress workflow and links tested
+- PDF/Excel exports verified
+- Audit history verified
+- Search/filter verified
+- Offline queue tested
+- Company logo/form template loaded
+- SMTP configured
+- Strong secrets configured
+- HTTPS/domain configured
+- Off-server backups and restore test complete
+- Historical migration reconciled
+- UAT signed off

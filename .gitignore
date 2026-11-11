@@ -1,0 +1,16 @@
+.env
+*.pyc
+__pycache__/
+node_modules/
+frontend/dist/
+backend/uploads/*
+!backend/uploads/.gitkeep
+*.sql
+*.sql.gz
+DEMO_CREDENTIALS.txt
+.env.backup-*
+
+# Client data - never commit to a public repo
+client_source/
+backend/data/client_import/
+.DS_Store
