@@ -16,7 +16,7 @@ Run exactly once after startup:
 
 Then refresh the browser. You should see the real project `<PROJECT_CODE>` and historical RFIs.
 
-Client ARE local account:
+Client DRE local account:
 - Email: `<client DRE email>`
 - Temporary password: printed once by the importer (random)
 
@@ -30,10 +30,10 @@ Go to **Users** and create one account per person. You still need their names, e
 2. Create/open a Summary.
 3. Add an RFI.
 4. Submit Summary.
-5. Login as ARE and Activate RFI.
+5. Login as DRE and Activate RFI.
 6. Assign an inspector.
 7. Login inspector -> My Inspections -> review.
-8. Login ARE -> final decision.
+8. Login DRE -> final decision.
 9. Download PDF and Excel.
 10. Check Audit Log and Notifications.
 11. Create Daily Progress and link it to one or more RFIs.

@@ -11,8 +11,16 @@ from app.models import ProjectUser, Project, Rfi, RfiSummary, ReviewerAssignment
 from app.project_settings import get_settings
 
 ADMIN = 'ADMIN'
-# Category 2.1. ARE (client form) and RE_ARE (legacy combined code) are kept unchanged; DRE is the SRS term.
-MANAGEMENT = {'RE', 'DRE', 'ARE', 'RE_ARE'}
+# Category 2.1. DRE (Deputy Resident Engineer) is the only deputy role code.
+MANAGEMENT = {'RE', 'DRE'}
+# Role codes written before the DRE rename. They are still accepted when read from the database and are
+# treated as DRE everywhere; they can no longer be assigned. scripts/migrate_dre_rename.py rewrites them.
+LEGACY_ROLE_ALIASES = {'ARE': 'DRE', 'RE_ARE': 'DRE'}
+
+
+def normalize_role(role: str | None) -> str | None:
+    return LEGACY_ROLE_ALIASES.get(role, role) if role else role
+
 INSPECTORS = {'WORK_INSPECTOR', 'STRUCTURE_INSPECTOR', 'SURVEYOR', 'SENIOR_SURVEYOR', 'MATERIAL_INSPECTOR', 'LAB_TECHNICIAN', 'MATERIAL_ENGINEER'}
 OFFICE = {'QUANTITY_SURVEYOR', 'DRAFTSPERSON', 'SECRETARY', 'PROJECT_MANAGER', 'VIEWER'}
 CONTRACTOR = {'DATA_ENCODER', 'OFFICE_ENGINEER', 'CONTRACTOR', 'SITE_ENGINEER'}
@@ -20,8 +28,8 @@ PROJECT_ROLES = MANAGEMENT | INSPECTORS | OFFICE | CONTRACTOR
 GLOBAL_ROLES = PROJECT_ROLES | {ADMIN}
 
 ROLE_LABELS = {
-    'ADMIN': 'System Administrator', 'RE': 'Resident Engineer', 'DRE': 'Deputy Resident Engineer', 'ARE': 'Assistant Resident Engineer',
-    'RE_ARE': 'RE / ARE (legacy)', 'WORK_INSPECTOR': 'Works Inspector', 'STRUCTURE_INSPECTOR': 'Structure Inspector', 'SURVEYOR': 'Surveyor',
+    'ADMIN': 'System Administrator', 'RE': 'Resident Engineer', 'DRE': 'Deputy Resident Engineer',
+    'WORK_INSPECTOR': 'Works Inspector', 'STRUCTURE_INSPECTOR': 'Structure Inspector', 'SURVEYOR': 'Surveyor',
     'SENIOR_SURVEYOR': 'Senior Surveyor', 'MATERIAL_INSPECTOR': 'Material Inspector', 'LAB_TECHNICIAN': 'Soil Lab Technician',
     'MATERIAL_ENGINEER': 'Material Engineer', 'QUANTITY_SURVEYOR': 'Quantity Surveyor', 'DRAFTSPERSON': 'Draftsperson', 'SECRETARY': 'Secretary',
     'PROJECT_MANAGER': 'Project Manager (read-only)', 'VIEWER': 'Viewer (read-only)', 'DATA_ENCODER': 'Data Encoder', 'OFFICE_ENGINEER': 'Office Engineer',
@@ -30,6 +38,7 @@ ROLE_LABELS = {
 
 
 def category(role: str | None) -> str | None:
+    role = normalize_role(role)
     if role == ADMIN: return '1'
     if role in MANAGEMENT: return '2.1'
     if role in INSPECTORS: return '2.2'
@@ -53,7 +62,13 @@ def project_role(db, user: User, project_id: int) -> str | None:
     m = membership(db, user, project_id)
     if not m:
         return None
-    return m.role or (user.role if user.role in PROJECT_ROLES else None)
+    return effective_role(m, user)
+
+
+def effective_role(m: ProjectUser, user: User) -> str | None:
+    """Membership role (legacy NULL falls back to users.role), with pre-rename codes mapped to DRE."""
+    role = normalize_role(m.role or user.role)
+    return role if role in PROJECT_ROLES else None
 
 
 def get_project(db, project_id: int) -> Project:

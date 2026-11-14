@@ -1,7 +1,7 @@
 # Client readiness checklist
 - Contractor creates Draft Summary and multiple RFIs
 - Submitted Summary locks
-- RE/ARE can Return Summary and Activate RFI
+- RE/DRE can Return Summary and Activate RFI
 - Reviewer assignment and My Inspections work
 - Structured recommendation/comment works
 - Final decision blocks until required reviews complete unless override reason is recorded

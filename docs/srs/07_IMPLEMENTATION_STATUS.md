@@ -33,7 +33,7 @@ User acceptance by the client (real users, real devices) is still required. Thes
 - Central `authz` module; project memberships with project roles; every RFI, DOC_01, register, PDF, Excel, attachment, dashboard, notification, audit, reference-data, reviewer-rule and Daily-Progress endpoint is project-scoped. `/users` is admin-only.
 - Submitted RFIs locked. Corrections go through a controlled amendment (request → RE/DRE approve/reject, original values kept, stale-value check).
 - Strict sequential review: sequence numbers, a single active turn, row locks, change-after-start requires a reason, and the replaced inspector is locked out.
-- Final decision RE/DRE/ARE only (Admin excluded). Configurable DOC_03 dispositions. Approved section. Issued DOC_03 snapshot with SHA-256.
+- Final decision RE/DRE only (Admin excluded). Configurable DOC_03 dispositions. Approved section. Issued DOC_03 snapshot with SHA-256.
 - DOC_01 fields: inspection/requested time, material offset, order of inspection, BOQ, work categories, enclosures. 24 h flag (or require reason) in site time. Idempotent create/submit.
 - DOC_02: paged/sorted/filtered register with total and a filtered banner. Excel in workbook column order (frozen header, autofilter). Landscape A3 PDF with repeated header and "Page x of y".
 - DOC_01 and DOC_03 PDFs following the client forms; typed-name electronic acknowledgements only (no signatures or stamps generated).

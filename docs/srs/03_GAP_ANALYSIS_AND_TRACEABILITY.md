@@ -1,4 +1,5 @@
 # Repository Audit, Gap Analysis and Requirements Traceability Matrix
+> **Note (DR-02, decided Nov 2026):** the client chose "DRE" everywhere. Mentions of ARE below describe the system/data *as it was* at the time of writing. The application now presents and authorises ARE as DRE.
 
 **Baseline audited:** commit `583b6d3` ("Construction RFI management system"), clean working tree, 14 Nov 2026.
 **Method:** every backend router, model, schema, service and script was read in full. The frontend routing, workflow pages, API client and offline queue were read. The client workbook was profiled (see `01_DOC02_WORKBOOK_ANALYSIS.md`).

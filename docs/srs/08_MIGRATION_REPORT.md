@@ -1,4 +1,5 @@
 # Migration Report: release 5.0.0-srs applied to the live database (14 Nov 2026)
+> **Note (DR-02, decided Nov 2026):** the client chose "DRE" everywhere. Mentions of ARE below describe the system/data *as it was* at the time of writing. The application now presents and authorises ARE as DRE.
 
 Executed per `06_MIGRATION_RUNBOOK.md` after written approval. **Result: success. No rollback was needed.**
 

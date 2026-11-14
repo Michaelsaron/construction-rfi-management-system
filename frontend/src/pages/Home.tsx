@@ -9,7 +9,7 @@ import './home.css';
 const FEATURES = [
   { icon: 'layers', t: 'RFI Summaries & Register', d: 'Group individual RFIs under a summary, lock on submission, and search the full register by number, chainage, side or work item.' },
   { icon: 'hardhat', t: 'Technical Review', d: 'Assign the right reviewers per work type. Each reviewer gets a personal inspection queue and records a recommendation with comments.' },
-  { icon: 'shield', t: 'RE / ARE Decisions', d: 'Approve, reject, keep on progress or record for information, with revision history kept for every resubmission.' },
+  { icon: 'shield', t: 'RE / DRE Decisions', d: 'Approve, reject, keep on progress or record for information, with revision history kept for every resubmission.' },
   { icon: 'progress', t: 'Daily Progress', d: 'Log daily site quantities and statuses against the project work list using dependent dropdowns that match how the site works.' },
   { icon: 'clip', t: 'Attachments & Evidence', d: 'Attach test results, drawings and site photos directly to each RFI so the evidence travels with the decision.' },
   { icon: 'chart', t: 'Reports & Excel Export', d: 'Export the RFI register and progress reports to Excel for monthly reports, claims and client meetings.' },
@@ -21,15 +21,15 @@ const FEATURES = [
 const STEPS = [
   { t: 'Create Summary', d: 'Contractor drafts the RFI Summary and adds individual RFIs.' },
   { t: 'Submit & Lock', d: 'Summary is submitted to the Resident Engineer and locked.' },
-  { t: 'Activate & Assign', d: 'RE/ARE activates each RFI and assigns technical reviewers.' },
+  { t: 'Activate & Assign', d: 'RE/DRE activates each RFI and assigns technical reviewers.' },
   { t: 'Inspect & Recommend', d: 'Reviewers inspect on site and submit their recommendations.' },
-  { t: 'Decide & Record', d: 'RE/ARE issues the final decision, which is saved to the register.' },
+  { t: 'Decide & Record', d: 'RE/DRE issues the final decision, which is saved to the register.' },
 ];
 
 const ROLES = [
   { icon: 'ruler', t: 'Contractor / Site Engineer', d: 'Raise RFI summaries, attach evidence, track decisions and log daily progress.' },
   { icon: 'hardhat', t: 'Technical Reviewer', d: 'Work through My Inspections, record test results and recommendations.' },
-  { icon: 'shield', t: 'Resident Engineer / ARE', d: 'Activate RFIs, assign reviewers and issue final decisions.' },
+  { icon: 'shield', t: 'Resident Engineer / DRE', d: 'Activate RFIs, assign reviewers and issue final decisions.' },
   { icon: 'users', t: 'Administrator', d: 'Manage projects, users, reference data, reviewer rules and the audit log.' },
 ];
 

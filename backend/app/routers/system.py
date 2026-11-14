@@ -21,10 +21,10 @@ def me(db: Session = Depends(get_db), u: User = Depends(current_user)):
                       .where(ProjectUser.user_id == u.id, ProjectUser.status == 'ACTIVE', Project.archived_at.is_(None))).all()
     ms = []
     for m, p in rows:
-        role = m.role or (u.role if u.role in authz.PROJECT_ROLES else None)
+        role = authz.effective_role(m, u)
         if role: ms.append({'project_id': p.id, 'code': p.code, 'name': p.name, 'role': role, 'role_label': authz.ROLE_LABELS.get(role, role),
                             'category': authz.category(role), 'deputy_label': get_settings(p)['deputy_label']})
-    return {'id': u.id, 'name': u.full_name, 'email': u.email, 'role': u.role, 'is_admin': u.role == 'ADMIN',
+    return {'id': u.id, 'name': u.full_name, 'email': u.email, 'role': authz.normalize_role(u.role), 'is_admin': u.role == 'ADMIN',
             'must_change_password': u.must_change_password, 'memberships': ms}
 
 

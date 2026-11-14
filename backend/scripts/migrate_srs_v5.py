@@ -73,7 +73,7 @@ def main(apply: bool):
         cond = 'pu.role IS NULL AND ' if has('project_users', 'role') else ''
         n1 = c.execute(text(f'SELECT COUNT(*) FROM project_users pu JOIN users u ON u.id=pu.user_id WHERE {cond}u.role IN {roles}')).scalar()
         detail = c.execute(text(f'SELECT pu.project_id, u.id, u.role FROM project_users pu JOIN users u ON u.id=pu.user_id WHERE {cond}u.role IN {roles}')).all()
-        print(f'Step 1 membership.role <- users.role (unchanged codes, e.g. ARE stays ARE): {n1} row(s) {list(map(tuple, detail))}')
+        print(f'Step 1 membership.role <- users.role (codes copied unchanged; see migrate_dre_rename.py): {n1} row(s) {list(map(tuple, detail))}')
         no_member = c.execute(text("SELECT id, role FROM users WHERE role<>'ADMIN' AND id NOT IN (SELECT user_id FROM project_users)")).all()
         print(f'        users with no project membership (reported only, NOT granted access): {list(map(tuple, no_member))}')
         # 2. Provenance

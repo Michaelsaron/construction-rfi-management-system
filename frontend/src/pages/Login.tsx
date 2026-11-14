@@ -35,7 +35,7 @@ export default function Login() {
         <div>
           <SiteScene className="scene" />
           <h2>Every inspection, signed off and on record.</h2>
-          <p>Request for Inspection workflows, technical reviews, RE/ARE decisions and daily site progress in one place.</p>
+          <p>Request for Inspection workflows, technical reviews, RE/DRE decisions and daily site progress in one place.</p>
         </div>
         <div style={{ fontSize: 13, color: '#8fa0b3' }}>© {new Date().getFullYear()} Construction RFI Management System</div>
       </section>

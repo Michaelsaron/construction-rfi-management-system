@@ -125,7 +125,7 @@ def members(pid: int, include_revoked: bool = False, db: Session = Depends(get_d
     if not (include_revoked and authz.is_admin(u)): q = q.where(ProjectUser.status == 'ACTIVE')
     out = []
     for m, usr in db.execute(q.order_by(User.full_name)).all():
-        role = m.role or (usr.role if usr.role in authz.PROJECT_ROLES else None)
+        role = authz.effective_role(m, usr)
         row = {'membership_id': m.id, 'user_id': usr.id, 'full_name': usr.full_name, 'role': role, 'role_label': authz.ROLE_LABELS.get(role, role),
                'category': authz.category(role), 'is_active': usr.is_active, 'legacy_role': m.role is None}
         if authz.is_admin(u): row.update(email=usr.email, status=m.status, revoked_at=m.revoked_at)

@@ -5,14 +5,14 @@
 - User roles reviewed
 - Project data verified
 - Work Items / Descriptions / Tests / Material Sources validated
-- Reviewer Rules approved by RE/ARE
+- Reviewer Rules approved by RE/DRE
 - Official logo and report form approved
 - RFI Summary workflow tested
 - RFI activation tested
 - Reviewer assignment tested
 - My Inspections tested
 - Required-review blocking tested
-- RE/ARE override tested with reason
+- RE/DRE override tested with reason
 - Rejected RFI revision tested
 - Attachments tested on mobile and desktop
 - Daily Progress workflow tested

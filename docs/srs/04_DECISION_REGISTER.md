@@ -30,7 +30,7 @@ The recommended options are written so that implementation can start safely: eac
 - **Confirm:** yes. **Impact:** permission matrix only.
 
 ### OD-05 — RE/DRE independent or joint approval
-- **SRS:** asks. **Docs:** DOC_03 has a single "RE/ARE Sign / Date" block, which implies one signatory. **Now:** any RE/ARE/RE_ARE (or Admin) alone.
+- **SRS:** asks. **Docs:** DOC_03 has a single "RE/ARE Sign / Date" block, which implies one signatory. **Before 5.0:** any RE/ARE/RE_ARE (or Admin) alone. **Now:** RE or DRE.
 - **Recommendation:** **either RE or DRE independently**, recorded by name. Joint endorsement can be added later as a project setting.
 - **Confirm:** yes. **Impact:** low.
 
@@ -91,7 +91,7 @@ The recommended options are written so that implementation can start safely: eac
 | ID | Topic | Evidence | Recommendation | Blocking? |
 |---|---|---|---|---|
 | **DR-01 / C-1** | **Admin authority.** The SRS §7 table gives Admin "Full access" to inspector comments and the final decision, while §7.1 / BR-07 say *only RE/DRE* may decide. The current code lets Admin decide and submit reviews for others. | SRS p.7 vs p.7/11 | Admin = configuration and oversight (read everything, manage users/projects/assignments). **No official review or decision authority** unless the client explicitly confirms otherwise. | Yes |
-| **DR-02 / C-2** | **RE/ARE vs RE/DRE.** The SRS says DRE; the client's own DOC_03 says "RE/ARE" and distributes copies to "ARE". The current system and data use ARE (and RE_ARE). | DOC_03 footer | Treat DRE and ARE as **the same Category 2.1 deputy role**, with a display label configurable per project ("DRE" or "ARE"). Do **not** rename existing users automatically; Admin confirms each mapping. `RE_ARE` stays as a legacy combined code with the same rights as RE. | Yes (label + mapping) |
+| **DR-02 / C-2** | **RE/ARE vs RE/DRE.** The SRS says DRE; the client's paper DOC_03 says "RE/ARE". | DOC_03 footer | **DECIDED (Nov 2026): "DRE" is used everywhere.** ARE is no longer an assignable code; stored ARE / RE_ARE codes are read as DRE. The stored codes are renamed by `scripts/migrate_dre_rename.py` (dry run by default; live run needs approval). No passwords, users or ownership change. | Closed |
 | DR-03 | Existing role codes with no SRS equivalent: `SITE_ENGINEER`, `CONTRACTOR`, `PROJECT_MANAGER`, `VIEWER` | `users.ROLES` | `CONTRACTOR`/`SITE_ENGINEER` → Category 3 (proposed `OFFICE_ENGINEER`); `PROJECT_MANAGER`/`VIEWER` → read-only Category 2.3-like access. Per-user confirmation, no automatic privilege gain. | No |
 | DR-04 | Decision override (skip pending reviews) | `rfis.decide` | Remove from the normal flow. If kept, RE only, with a mandatory reason, audited, and shown on the DOC_03 PDF. | Yes |
 | DR-05 | "Activate/Accept" step before assignment (not in the SRS) | `rfis.activate` | Merge into assignment: saving the first sequence = "Received + Assigned". Keep "Return batch to contractor" before assignment. | No |

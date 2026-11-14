@@ -20,12 +20,12 @@ def check_password(p: str):
 def memberships(db, uid):
     rows = db.execute(select(ProjectUser, Project).join(Project, Project.id == ProjectUser.project_id).where(ProjectUser.user_id == uid)).all()
     u = db.get(User, uid)
-    return [{'project_id': p.id, 'project_code': p.code, 'role': m.role or u.role, 'legacy_role': m.role is None, 'status': m.status} for m, p in rows]
+    return [{'project_id': p.id, 'project_code': p.code, 'role': authz.normalize_role(m.role or u.role), 'legacy_role': m.role is None, 'status': m.status} for m, p in rows]
 
 
 def public(db, u: User):
     ms = memberships(db, u.id)
-    return {'id': u.id, 'full_name': u.full_name, 'email': u.email, 'role': u.role, 'role_label': authz.ROLE_LABELS.get(u.role, u.role), 'is_active': u.is_active,
+    return {'id': u.id, 'full_name': u.full_name, 'email': u.email, 'role': authz.normalize_role(u.role), 'role_label': authz.ROLE_LABELS.get(authz.normalize_role(u.role), u.role), 'is_active': u.is_active,
             'must_change_password': u.must_change_password, 'created_at': u.created_at, 'last_login_at': u.last_login_at,
             'memberships': ms, 'project_ids': [m['project_id'] for m in ms if m['status'] == 'ACTIVE']}
 
@@ -66,13 +66,13 @@ def update_projects(uid: int, d: UserProjectsIn, db: Session = Depends(get_db), 
     from datetime import datetime
     u = db.get(User, uid)
     if not u: raise HTTPException(404, 'User not found')
-    if u.role not in authz.PROJECT_ROLES: raise HTTPException(400, 'Use project memberships with an explicit role for this user')
+    if authz.normalize_role(u.role) not in authz.PROJECT_ROLES: raise HTTPException(400, 'Use project memberships with an explicit role for this user')
     want = set(d.project_ids)
     for m in db.scalars(select(ProjectUser).where(ProjectUser.user_id == uid)):
         if m.project_id not in want and m.status == 'ACTIVE': m.status = 'REVOKED'; m.revoked_at = datetime.utcnow()
     for pid in want:
         m = db.scalar(select(ProjectUser).where(ProjectUser.user_id == uid, ProjectUser.project_id == pid))
-        if not m or m.status != 'ACTIVE': upsert_membership(db, uid, pid, (m.role if m and m.role else u.role))
+        if not m or m.status != 'ACTIVE': upsert_membership(db, uid, pid, authz.normalize_role(m.role if m and m.role else u.role))
     log(db, admin.id, 'USER', uid, 'SET_PROJECTS', ','.join(map(str, sorted(want))))
     db.commit()
     return public(db, u)

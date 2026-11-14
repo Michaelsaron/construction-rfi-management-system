@@ -7,7 +7,7 @@
 
 ## 1. Target role and permission matrix (server-enforced, per project membership)
 
-| Function | Admin (C1) | RE | DRE/ARE | Inspectors (C2.2) | Office (C2.3) | Contractor (C3) |
+| Function | Admin (C1) | RE | DRE/DRE | Inspectors (C2.2) | Office (C2.3) | Contractor (C3) |
 |---|---|---|---|---|---|---|
 | Create/edit/archive projects, users, memberships | ✔ | – | – | – | – | – |
 | Reference data / reviewer rules | ✔ | ✔ | ✔ | – | – | – |
@@ -24,7 +24,7 @@
 | Completed DOC_03 PDF | ✔ | ✔ | ✔ | own reviewed RFIs | ✔ | ✔ (scoped) |
 | Audit log | ✔ all | project | project | – | – | – |
 
-Role codes (per membership): `RE`, `DRE` (label "ARE" configurable), `WORK_INSPECTOR`, `STRUCTURE_INSPECTOR`, `MATERIAL_INSPECTOR`, `SURVEYOR`, `SENIOR_SURVEYOR`, `LAB_TECHNICIAN`, `MATERIAL_ENGINEER`, `QUANTITY_SURVEYOR`, `DRAFTSPERSON`, `SECRETARY`, `DATA_ENCODER`, `OFFICE_ENGINEER`. Legacy accepted: `ARE`→treated as DRE, `RE_ARE`→RE, `CONTRACTOR`/`SITE_ENGINEER`→Category 3, `PROJECT_MANAGER`/`VIEWER`→read-only. `ADMIN` stays a global flag.
+Role codes (per membership): `RE`, `DRE` (fixed label, DR-02 decided), `WORK_INSPECTOR`, `STRUCTURE_INSPECTOR`, `MATERIAL_INSPECTOR`, `SURVEYOR`, `SENIOR_SURVEYOR`, `LAB_TECHNICIAN`, `MATERIAL_ENGINEER`, `QUANTITY_SURVEYOR`, `DRAFTSPERSON`, `SECRETARY`, `DATA_ENCODER`, `OFFICE_ENGINEER`. Legacy accepted: `ARE`→treated as DRE, `RE_ARE`→RE, `CONTRACTOR`/`SITE_ENGINEER`→Category 3, `PROJECT_MANAGER`/`VIEWER`→read-only. `ADMIN` stays a global flag.
 
 Implementation: one `authz` module with `require_project_role(project_id, *roles)` and `visible_rfi_filter(user, project_id)`. Every router (RFIs, summaries, reports, attachments, notifications, dashboard, audit, master data, users) goes through it. Exports reuse the exact same query builder as the screen.
 
@@ -69,7 +69,7 @@ stateDiagram-v2
 | `audit_logs` | `project_id`, `before_json`, `after_json`, `ip`; append-only (no update/delete endpoints; DB user grants reviewed for production) |
 
 **Data migrations (separate, reversible, logged):**
-1. Membership roles: for each existing `project_users` row set `role = users.role` (ARE stays ARE). No new memberships are created; users without one are reported.
+1. Membership roles: for each existing `project_users` row set `role = users.role` (codes copied unchanged; ARE later renamed to DRE by `migrate_dre_rename.py`). No new memberships are created; users without one are reported.
 2. Back-fill `sequence_no` for open assignments by `assigned_at`, flag `sequence_backfilled`.
 3. Normalise legacy `workflow_status='ARCHIVED'` with `record_state='ACTIVE'` → `LEGACY_NO_DECISION`.
 4. Set `provenance='LEGACY_IMPORT'` for rows with no `summary_id` that were created by the importer (created_by = admin, created before the cut-over date).

@@ -47,8 +47,8 @@ DEFAULTS = {
     # OD-04: inspectors may read the DOC_02 register (read-only) / export it.
     'inspector_register_access': True,
     'inspector_export': False,
-    # DR-02: label printed for the deputy (DRE in the SRS, ARE on the client's DOC_03).
-    'deputy_label': 'ARE',
+    # DR-02 decided by the client (Nov 2026): the deputy is "DRE" everywhere. Fixed, not configurable.
+    'deputy_label': 'DRE',
     'overdue_hours': 24,
     'dispositions': DEFAULT_DISPOSITIONS,
     'doc03_notes': DEFAULT_DOC03_NOTES,
@@ -65,6 +65,7 @@ def get_settings(project) -> dict:
                 s.update({k: v for k, v in stored.items() if k in ALLOWED_KEYS})
         except ValueError:
             pass
+    s['deputy_label'] = 'DRE'  # an older stored value ("ARE") is ignored
     return s
 
 
@@ -74,6 +75,8 @@ def validate_settings(data: dict) -> dict:
         if k not in ALLOWED_KEYS:
             raise ValueError(f'Unknown setting: {k}')
         out[k] = v
+    if 'deputy_label' in out and out['deputy_label'] != 'DRE':
+        raise ValueError('deputy_label is fixed to DRE')
     if 'notice_policy' in out and out['notice_policy'] not in ('FLAG', 'REQUIRE_OVERRIDE'):
         raise ValueError('notice_policy must be FLAG or REQUIRE_OVERRIDE')
     if 'contractor_visibility' in out and out['contractor_visibility'] not in ('PROJECT', 'OWN'):

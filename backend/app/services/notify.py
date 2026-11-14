@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.models import Notification, User, Rfi, ReviewerAssignment, ProjectUser, Project
 from app.services.emailer import send_email
+from app.authz import normalize_role
 
 
 def notify(db: Session, user_id: int, title: str, message: str, entity_type: str | None = None, entity_id: int | None = None,
@@ -23,7 +24,7 @@ def project_members(db: Session, project_id: int, roles: set[str]):
     """Active users holding one of `roles` in this project (legacy memberships fall back to users.role)."""
     rows = db.execute(select(User, ProjectUser).join(ProjectUser, ProjectUser.user_id == User.id)
                       .where(ProjectUser.project_id == project_id, ProjectUser.status == 'ACTIVE', User.is_active == True)).all()
-    return [u for u, m in rows if (m.role or u.role) in roles]
+    return [u for u, m in rows if normalize_role(m.role or u.role) in roles]
 
 
 def notify_project_roles(db: Session, project_id: int, roles: set[str], title: str, message: str, entity_type=None, entity_id=None, exclude: set[int] | None = None):

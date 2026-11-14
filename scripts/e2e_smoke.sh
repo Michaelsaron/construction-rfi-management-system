@@ -22,7 +22,7 @@ echo "[6/10] Assign reviewer"
 ASSIGN=$(curl -fsS -X POST "$API/rfis/$RFI/assign-reviewer" "${H[@]}" -d "{\"user_id\":$ADMIN_UID,\"reviewer_role\":\"WORK_INSPECTOR\",\"required\":true}" | json "['id']")
 echo "[7/10] Reviewer response"
 curl -fsS -X POST "$API/rfis/$RFI/review" "${H[@]}" -d "{\"assignment_id\":$ASSIGN,\"recommendation\":\"SATISFACTORY\",\"comment\":\"Automated smoke test review\"}" >/dev/null
-echo "[8/10] RE/ARE final decision"
+echo "[8/10] RE/DRE final decision"
 curl -fsS -X POST "$API/rfis/$RFI/decision" "${H[@]}" -d '{"decision":"APPROVED","comment":"Automated smoke test decision","override_used":false}' >/dev/null
 echo "[9/10] Generate PDF + Excel"
 curl -fsS "$API/reports/rfi/$RFI.pdf" -H "Authorization: Bearer $TOKEN" -o /tmp/rfi_e2e.pdf

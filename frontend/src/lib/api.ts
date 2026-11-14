@@ -8,12 +8,12 @@ export const setUser = (u: any) => localStorage.setItem('user', JSON.stringify(u
 export const getUser = (): any => { try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; } };
 
 // ---- Role model (mirrors backend app/authz.py; the backend is the authority, this only shapes the UI)
-export const MANAGEMENT = ['RE', 'DRE', 'ARE', 'RE_ARE'];
+export const MANAGEMENT = ['RE', 'DRE'];
 export const INSPECTORS = ['WORK_INSPECTOR', 'STRUCTURE_INSPECTOR', 'SURVEYOR', 'SENIOR_SURVEYOR', 'MATERIAL_INSPECTOR', 'LAB_TECHNICIAN', 'MATERIAL_ENGINEER'];
 export const OFFICE = ['QUANTITY_SURVEYOR', 'DRAFTSPERSON', 'SECRETARY', 'PROJECT_MANAGER', 'VIEWER'];
 export const CONTRACTOR = ['DATA_ENCODER', 'OFFICE_ENGINEER', 'CONTRACTOR', 'SITE_ENGINEER'];
 export const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'System Administrator', RE: 'Resident Engineer', DRE: 'Deputy Resident Engineer', ARE: 'Assistant Resident Engineer', RE_ARE: 'RE / ARE (legacy)',
+  ADMIN: 'System Administrator', RE: 'Resident Engineer', DRE: 'Deputy Resident Engineer',
   WORK_INSPECTOR: 'Works Inspector', STRUCTURE_INSPECTOR: 'Structure Inspector', SURVEYOR: 'Surveyor', SENIOR_SURVEYOR: 'Senior Surveyor',
   MATERIAL_INSPECTOR: 'Material Inspector', LAB_TECHNICIAN: 'Soil Lab Technician', MATERIAL_ENGINEER: 'Material Engineer', QUANTITY_SURVEYOR: 'Quantity Surveyor',
   DRAFTSPERSON: 'Draftsperson', SECRETARY: 'Secretary', PROJECT_MANAGER: 'Project Manager (read-only)', VIEWER: 'Viewer (read-only)', DATA_ENCODER: 'Data Encoder',

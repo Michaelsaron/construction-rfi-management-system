@@ -1,4 +1,4 @@
-# Migration Runbook — release 5.0.0-srs (AWAITING APPROVAL — NOT YET RUN ON THE REAL DATABASE)
+# Migration Runbook — release 5.0.0-srs (APPLIED to the live database on 14 Nov 2026, see 08_MIGRATION_REPORT.md)
 
 ## 1. Backup verification (done 14 Nov 2026, 15:11 local)
 
@@ -53,7 +53,7 @@ docker compose -f docker-compose.public.yml logs tunnel | grep trycloudflare
 ```
 
 ## 5. After migration — administrator actions (not automatic)
-1. Projects & Members: give each existing user a project role. The existing ARE (`<client DRE email>`) keeps role **ARE** on `<PROJECT_CODE>`, with the same rights as RE/DRE. Nothing is renamed.
+1. Projects & Members: give each existing user a project role. The existing deputy account (`<client DRE email>`) was stored with the former code ARE; since release 5.1 it is shown and authorised as **DRE** (DR-02). The stored code is renamed only by `scripts/migrate_dre_rename.py`, after approval.
 2. Create the inspector, office and contractor accounts, and add them to the project with their roles.
 3. Confirm the client decisions in `04_DECISION_REGISTER.md`. Most are project settings and need no code change.
 

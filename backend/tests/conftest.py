@@ -78,7 +78,16 @@ def world(client, admin):
         api = login(client, email); api.id = r.json()['id']
         setattr(w, key, api)
         return api
-    user('re', [(w.A, 'RE')]); user('are', [(w.A, 'ARE')]); user('dre', [(w.A, 'DRE')])
+    user('re', [(w.A, 'RE')]); user('are', [(w.A, 'DRE')]); user('dre', [(w.A, 'DRE')])
+    # 'are' mirrors the live client account: role code ARE stored before the DRE rename (DR-02).
+    # ARE can no longer be assigned through the API, so the legacy code is written directly.
+    from sqlalchemy import update
+    from app.database import SessionLocal
+    from app.models import User, ProjectUser
+    with SessionLocal() as db:
+        db.execute(update(User).where(User.id == w.are.id).values(role='ARE'))
+        db.execute(update(ProjectUser).where(ProjectUser.user_id == w.are.id).values(role='ARE'))
+        db.commit()
     user('surveyor', [(w.A, 'SURVEYOR')]); user('wi', [(w.A, 'WORK_INSPECTOR')]); user('me_eng', [(w.A, 'MATERIAL_ENGINEER')])
     user('si', [(w.A, 'STRUCTURE_INSPECTOR')])
     user('qs', [(w.A, 'QUANTITY_SURVEYOR')]); user('secretary', [(w.A, 'SECRETARY')])

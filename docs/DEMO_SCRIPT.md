@@ -8,11 +8,11 @@
 6. Create a manual RFI Summary reference.
 7. Add two manual-number individual RFIs.
 8. Submit the Summary.
-9. Open one RFI and click Accept / Activate as RE/ARE.
+9. Open one RFI and click Accept / Activate as RE/DRE.
 10. Assign an Inspector.
 11. Login as Inspector and open My Inspections.
 12. Add structured recommendation and technical comment.
-13. Login as RE/ARE and approve/reject.
+13. Login as RE/DRE and approve/reject.
 14. If rejected, demonstrate Revision 1.
 15. Upload photo/PDF/CAD attachment.
 16. Export official RFI PDF and Excel Register.

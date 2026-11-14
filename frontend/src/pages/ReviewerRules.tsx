@@ -22,7 +22,7 @@ export default function ReviewerRules() {
   }
   return <>
     <h1>Reviewer Rules</h1>
-    <p className="subtitle">Choose which reviewer roles are suggested for each work item. RE/ARE see these suggestions when assigning reviewers to an RFI.</p>
+    <p className="subtitle">Choose which reviewer roles are suggested for each work item. RE/DRE see these suggestions when assigning reviewers to an RFI.</p>
     {msg && <div className="notice ok">{msg}</div>}
     <form className="card" onSubmit={create}>
       <div className="grid">

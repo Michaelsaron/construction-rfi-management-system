@@ -79,9 +79,9 @@ Legend: **E** = existing column in `rfis` · **N** = new column needed · **R** 
 | Enclosures / Check Lists — Sheets (count) | `rfis.enclosure_sheets` **N** + attachments **E** | Contractor | Contractor |
 | **Disposition** checkboxes: Information only · Activity On Progress · Approved: For further works · Approved: Compliance to Comments required · Approved: For further works for the executed section and RFI to be resubmitted for the remaining section · Not Approved: RFI to be resubmitted | `decisions.disposition_code` **N** + `decisions.decision` (canonical outcome) **E** | – | RE/DRE only |
 | (approved section for partial approval) | `decisions.approved_from`, `approved_to` **N** → copied to `rfis.approved_from/to` **E** | – | RE/DRE |
-| RE/ARE Sign / Date | `decisions.decided_by`, `decided_at` **E** | – | system |
+| RE/DRE Sign / Date (the paper form says "RE/ARE"; DR-02: printed as RE/DRE) | `decisions.decided_by`, `decided_at` **E** | – | system |
 | Remark (if any) | `decisions.comment` **E** | – | RE/DRE |
-| Distribution: Original → RE; Copies → QS, ARE, ME, Inspectors, Surveyors, Lab Techs | `rfis.distribution` **N** (JSON list) or a fixed print block | – | Printed block; optional |
+| Distribution: Original → RE; Copies → QS, DRE (form: ARE), ME, Inspectors, Surveyors, Lab Techs | `rfis.distribution` **N** (JSON list) or a fixed print block | – | Printed block; optional |
 | Received by contractor — Name / Date / Signature | `rfis.returned_to_contractor_at` **N** (set when contractor first views the decided DOC_03) | – | system |
 | Form notes 1–5 (24 h submission, 24 h return, rejection rules) | static text in `project_settings.doc03_notes` **P** | – | Admin |
 

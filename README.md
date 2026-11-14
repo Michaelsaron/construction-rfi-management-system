@@ -1,6 +1,6 @@
 # Construction RFI Management System - Client Upgrade v3
 
-React PWA + FastAPI + MySQL for RFI summaries, individual RFIs, technical review, RE/ARE decisions, attachments, Daily Progress, reports, notifications and audit history.
+React PWA + FastAPI + MySQL for RFI summaries, individual RFIs, technical review, RE/DRE decisions, attachments, Daily Progress, reports, notifications and audit history.
 
 ## Important
 - Keep the existing MySQL volume. **Do not run `docker compose down -v`.**
@@ -41,11 +41,11 @@ If the DRE account is new, the importer prints a random one-time password once. 
 1. Contractor / Site Engineer creates RFI Summary.
 2. Add one or more individual RFIs using the imported dependent dropdowns.
 3. Submit Summary; it becomes locked.
-4. RE/ARE opens an RFI and Accepts/Activates it.
-5. RE/ARE assigns the required technical reviewers.
+4. RE/DRE opens an RFI and Accepts/Activates it.
+5. RE/DRE assigns the required technical reviewers.
 6. Reviewer uses **My Inspections** and submits recommendation + comment.
 7. When required reviews are complete, RFI becomes **AWAITING_DECISION**.
-8. RE/ARE selects final decision: APPROVED / REJECTED / ON_PROGRESS / INFORMATION_ONLY.
+8. RE/DRE selects final decision: APPROVED / REJECTED / ON_PROGRESS / INFORMATION_ONLY.
 9. Completed RFIs are locked for ordinary users and status history is preserved.
 10. Rejected RFI can be resubmitted using the same RFI number and the next revision number.
 
@@ -101,7 +101,7 @@ See `docs/PC_STEPS.md` for the shortest step-by-step checklist.
 
 ## Release update (November 2026)
 
-This release adds Daily Progress draft editing, inspector and RE/ARE comments,
+This release adds Daily Progress draft editing, inspector and RE/DRE comments,
 searchable RFI linking, individual Daily Progress PDF, project-aware Daily Progress
 API filtering, and additive migration script `backend/scripts/migrate_release_v4.py`.
 

@@ -153,7 +153,7 @@ def daily_progress_pdf(pid: int, db: Session = Depends(get_db), u: User = Depend
     rows = [('Project', project.name if project else ''), ('Report #', r.id), ('Progress Date', r.progress_date), ('Work Item', r.work_item), ('Description / Stage', r.description),
             ('Chainage', f'{r.chainage_from or ""} - {r.chainage_to or ""}'), ('Side', r.side), ('Quantity / Unit', f'{r.quantity if r.quantity is not None else ""} {r.unit or ""}'),
             ('Status', r.status), ('Linked RFI numbers', ', '.join(linked) or '-'), ('Remarks', r.remarks), ('Created by', nm.get(r.created_by)),
-            ('Inspector', nm.get(r.reviewed_by, '-')), ('Inspector comment', r.review_comment), ('Reviewed at', r.reviewed_at), ('RE/ARE', nm.get(r.confirmed_by, '-')),
+            ('Inspector', nm.get(r.reviewed_by, '-')), ('Inspector comment', r.review_comment), ('Reviewed at', r.reviewed_at), ('RE/DRE', nm.get(r.confirmed_by, '-')),
             ('Confirmation comment', r.confirmation_comment), ('Confirmed at', r.confirmed_at)]
     out = BytesIO(); doc = SimpleDocTemplate(out, pagesize=A4, rightMargin=15 * mm, leftMargin=15 * mm, topMargin=15 * mm, bottomMargin=15 * mm)
     styles = getSampleStyleSheet()
