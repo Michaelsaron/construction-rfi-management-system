@@ -28,12 +28,22 @@ class Project(Base):
     consultant:Mapped[str|None]=mapped_column(String(255),nullable=True)
     contractor:Mapped[str|None]=mapped_column(String(255),nullable=True)
     is_active:Mapped[bool]=mapped_column(Boolean,default=True)
+    # SRS v1.0 additions (nullable / defaulted, additive)
+    project_length:Mapped[str|None]=mapped_column(String(60),nullable=True)
+    archived_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    settings_json:Mapped[str|None]=mapped_column(Text,nullable=True)
 
 class ProjectUser(Base):
+    """Project membership. `role` is the project-specific role (SRS 3.1).
+    NULL role = legacy row created before SRS v1.0; authz falls back to users.role."""
     __tablename__='project_users'
     id:Mapped[int]=mapped_column(primary_key=True)
     project_id:Mapped[int]=mapped_column(ForeignKey('projects.id'),index=True)
     user_id:Mapped[int]=mapped_column(ForeignKey('users.id'),index=True)
+    role:Mapped[str|None]=mapped_column(String(60),nullable=True)
+    status:Mapped[str]=mapped_column(String(20),default='ACTIVE')
+    created_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True,default=datetime.utcnow)
+    revoked_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
     __table_args__=(UniqueConstraint('project_id','user_id',name='uq_project_user'),)
 
 class MasterData(Base):
@@ -68,6 +78,10 @@ class RfiSummary(Base):
     returned_reason:Mapped[str|None]=mapped_column(Text,nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
     submitted_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    client_request_id:Mapped[str|None]=mapped_column(String(64),nullable=True,unique=True)
+    contractor_rep_name:Mapped[str|None]=mapped_column(String(150),nullable=True)
+    received_by:Mapped[int|None]=mapped_column(ForeignKey('users.id'),nullable=True)
+    received_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
     __table_args__=(UniqueConstraint('project_id','summary_reference',name='uq_summary_project_ref'),)
 
 class Rfi(Base):
@@ -117,6 +131,23 @@ class Rfi(Base):
     activated_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
     updated_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,onupdate=datetime.utcnow)
+    # SRS v1.0 / DOC_01 / DOC_03 additions
+    inspection_time:Mapped[str|None]=mapped_column(String(5),nullable=True)        # HH:MM (24h)
+    inspection_time_text:Mapped[str|None]=mapped_column(String(60),nullable=True)  # raw legacy text
+    requested_time:Mapped[str|None]=mapped_column(String(5),nullable=True)
+    material_source_offset:Mapped[str|None]=mapped_column(String(120),nullable=True)
+    inspection_order:Mapped[int|None]=mapped_column(Integer,nullable=True)          # 1 First / 2 Second / 3 Third
+    enclosure_sheets:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    work_categories:Mapped[str|None]=mapped_column(Text,nullable=True)              # JSON list of DOC_03 category codes
+    received_by:Mapped[int|None]=mapped_column(ForeignKey('users.id'),nullable=True)
+    received_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    short_notice:Mapped[bool|None]=mapped_column(Boolean,nullable=True)
+    notice_hours:Mapped[float|None]=mapped_column(Float,nullable=True)
+    short_notice_reason:Mapped[str|None]=mapped_column(Text,nullable=True)
+    current_disposition:Mapped[str|None]=mapped_column(String(60),nullable=True,index=True)
+    provenance:Mapped[str|None]=mapped_column(String(20),nullable=True,index=True)  # PORTAL / LEGACY_IMPORT
+    legacy_rfi_status:Mapped[str|None]=mapped_column(String(150),nullable=True)
+    legacy_source_row:Mapped[int|None]=mapped_column(Integer,nullable=True)
     __table_args__=(UniqueConstraint('project_id','rfi_number','revision_no',name='uq_rfi_project_no_rev'),)
 
 class ReviewerAssignment(Base):
@@ -130,6 +161,11 @@ class ReviewerAssignment(Base):
     assigned_by:Mapped[int]=mapped_column(ForeignKey('users.id'))
     assigned_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
     completed_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    # SRS v1.0: strict sequence. status PENDING (waiting turn) / ACTIVE (its turn) / COMPLETED / REPLACED
+    sequence_no:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    activated_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    change_reason:Mapped[str|None]=mapped_column(Text,nullable=True)
+    sequence_backfilled:Mapped[bool|None]=mapped_column(Boolean,nullable=True)
 
 class Review(Base):
     __tablename__='reviews'
@@ -152,6 +188,10 @@ class Decision(Base):
     override_reason:Mapped[str|None]=mapped_column(Text,nullable=True)
     decided_by:Mapped[int]=mapped_column(ForeignKey('users.id'))
     decided_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    disposition_code:Mapped[str|None]=mapped_column(String(60),nullable=True)
+    approved_from:Mapped[str|None]=mapped_column(String(255),nullable=True)
+    approved_to:Mapped[str|None]=mapped_column(String(255),nullable=True)
+    conditions:Mapped[str|None]=mapped_column(Text,nullable=True)
 
 class Attachment(Base):
     __tablename__='attachments'
@@ -205,6 +245,7 @@ class Notification(Base):
     message:Mapped[str]=mapped_column(Text)
     entity_type:Mapped[str|None]=mapped_column(String(30),nullable=True)
     entity_id:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    project_id:Mapped[int|None]=mapped_column(Integer,nullable=True,index=True)
     is_read:Mapped[bool]=mapped_column(Boolean,default=False)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
 
@@ -217,6 +258,9 @@ class AuditLog(Base):
     action:Mapped[str]=mapped_column(String(60),index=True)
     details:Mapped[str|None]=mapped_column(Text,nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+    project_id:Mapped[int|None]=mapped_column(Integer,nullable=True,index=True)
+    before_json:Mapped[str|None]=mapped_column(Text,nullable=True)
+    after_json:Mapped[str|None]=mapped_column(Text,nullable=True)
 
 
 class RfiStatusHistory(Base):
@@ -228,3 +272,33 @@ class RfiStatusHistory(Base):
     changed_by:Mapped[int]=mapped_column(ForeignKey('users.id'))
     reason:Mapped[str|None]=mapped_column(Text,nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow,index=True)
+
+
+class RfiAmendment(Base):
+    """Controlled amendment of submitted DOC_01 data (SRS 5.4 / 11.2). Original values are kept."""
+    __tablename__='rfi_amendments'
+    id:Mapped[int]=mapped_column(primary_key=True)
+    rfi_id:Mapped[int]=mapped_column(ForeignKey('rfis.id'),index=True)
+    project_id:Mapped[int]=mapped_column(ForeignKey('projects.id'),index=True)
+    changes_json:Mapped[str]=mapped_column(Text)       # {"field": {"old": .., "new": ..}}
+    reason:Mapped[str]=mapped_column(Text)
+    status:Mapped[str]=mapped_column(String(20),default='PENDING',index=True)  # PENDING / APPROVED / REJECTED
+    requested_by:Mapped[int]=mapped_column(ForeignKey('users.id'))
+    requested_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    resolved_by:Mapped[int|None]=mapped_column(ForeignKey('users.id'),nullable=True)
+    resolved_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    resolution_comment:Mapped[str|None]=mapped_column(Text,nullable=True)
+
+
+class IssuedDocument(Base):
+    """Immutable snapshot of a document as issued (e.g. completed DOC_03 PDF at decision time)."""
+    __tablename__='issued_documents'
+    id:Mapped[int]=mapped_column(primary_key=True)
+    rfi_id:Mapped[int]=mapped_column(ForeignKey('rfis.id'),index=True)
+    project_id:Mapped[int]=mapped_column(ForeignKey('projects.id'),index=True)
+    revision_no:Mapped[int]=mapped_column(Integer)
+    doc_type:Mapped[str]=mapped_column(String(20))
+    stored_name:Mapped[str]=mapped_column(String(255))
+    sha256:Mapped[str]=mapped_column(String(64))
+    issued_by:Mapped[int]=mapped_column(ForeignKey('users.id'))
+    issued_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)

@@ -14,11 +14,11 @@
 Run exactly once after startup:
 `docker compose exec backend python scripts/import_client_bundle.py`
 
-Then refresh the browser. You should see the real project `DUBTI-LOT-II` and historical RFIs.
+Then refresh the browser. You should see the real project `<PROJECT_CODE>` and historical RFIs.
 
 Client ARE local account:
-- Email: `frew99@gmail.com`
-- Temporary password: `ChangeMe_ARE_2026!`
+- Email: `<client DRE email>`
+- Temporary password: printed once by the importer (random)
 
 Change the password immediately in production.
 

@@ -1,169 +1,186 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, download, fmtDate, getUser, isManager } from '../lib/api';
+import { api, post, download, fmtDate, fmtDay, loc, roleLabel, INSPECTORS } from '../lib/api';
 import Attachments from '../components/Attachments';
-import Status, { pretty } from '../components/Status';
+import Status from '../components/Status';
 import Icon from '../components/Icon';
 
-const REVIEWER_ROLES = ['WORK_INSPECTOR', 'STRUCTURE_INSPECTOR', 'SURVEYOR', 'SENIOR_SURVEYOR', 'MATERIAL_INSPECTOR', 'LAB_TECHNICIAN', 'MATERIAL_ENGINEER'];
-const REVIEWABLE = ['ACTIVATED', 'UNDER_REVIEW', 'AWAITING_DECISION'];
-const EDIT_FIELDS: [string, string, string?][] = [
-  ['contractor_request', 'Contractor request'], ['description', 'Description', 'textarea'], ['structure_type', 'Structure type'], ['test_name', 'Test'],
-  ['road_type', 'Road type'], ['direction', 'Direction'], ['side', 'Side'], ['chainage_from', 'Chainage from'], ['chainage_to', 'Chainage to'],
-  ['material_source_type', 'Material source type'], ['material_source', 'Material source'], ['requested_date', 'Requested date', 'date'],
-  ['inspection_date', 'Inspection date', 'date'], ['work_status', 'Work status'], ['remarks', 'Remarks', 'textarea'],
-];
+const AMEND_FIELDS: [string, string, string?][] = [['contractor_request', 'Works description'], ['chainage_from', 'Station from'], ['chainage_to', 'Station to'], ['side', 'Side'],
+  ['material_source', 'Material source'], ['material_source_offset', 'Material offset'], ['boq_item', 'BOQ item'], ['inspection_date', 'Inspection date', 'date'],
+  ['inspection_time', 'Inspection time', 'time'], ['remarks', 'Remark']];
 
 export default function RfiDetail() {
   const { id } = useParams(); const nav = useNavigate();
-  const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
-  const [users, setUsers] = useState<any[]>([]); const [suggested, setSuggested] = useState<any[]>([]);
-  const [ass, setAss] = useState<any>({ user_id: 0, reviewer_role: 'WORK_INSPECTOR', required: true });
-  const [dec, setDec] = useState<any>({ decision: 'APPROVED', comment: '', override_used: false, override_reason: '' });
-  const [edit, setEdit] = useState<any>(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
-  const manager = isManager(); const me = getUser();
-
-  const load = () => api(`/rfis/${id}`).then(setD).catch(e => setErr(e.message));
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState(''); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState<any[]>([]); const [plan, setPlan] = useState<number[]>([]); const [planReason, setPlanReason] = useState(''); const [suggested, setSuggested] = useState<any[]>([]);
+  const [comment, setComment] = useState('');
+  const [dec, setDec] = useState<any>({ disposition_code: '', comment: '', conditions: '', approved_from: '', approved_to: '' });
+  const [amend, setAmend] = useState<any>(null);
+  const load = () => api(`/rfis/${id}`).then((x: any) => { setD(x); return x; }).catch(e => setErr(e.message));
   useEffect(() => {
-    setD(null); setErr(''); setMsg(''); load();
-    api('/users').then((u: any[]) => { setUsers(u); const ru = u.filter(x => REVIEWER_ROLES.includes(x.role) && x.is_active); if (ru[0]) setAss((x: any) => ({ ...x, user_id: ru[0].id, reviewer_role: ru[0].role })); }).catch(() => {});
-    api(`/rfis/${id}/suggested-reviewers`).then(setSuggested).catch(() => {});
+    setD(null); setErr(''); setMsg('');
+    load().then((x: any) => {
+      if (!x) return;
+      if (x.permissions.assign) {
+        api(`/projects/${x.rfi.project_id}/members`).then((ms: any[]) => setMembers(ms.filter(m => INSPECTORS.includes(m.role) && m.is_active))).catch(() => {});
+        api(`/rfis/${id}/suggested-reviewers`).then(setSuggested).catch(() => {});
+        setPlan(x.assignments.filter((a: any) => ['PENDING', 'ACTIVE'].includes(a.status)).map((a: any) => a.user_id));
+      }
+    });
   }, [id]);
 
   async function run(fn: () => Promise<any>, ok: string) {
     setBusy(true); setMsg('');
     try { await fn(); setMsg(ok); await load(); } catch (e: any) { alert(e.message); } finally { setBusy(false); }
   }
-  const post = (path: string, body?: any) => api(`/rfis/${id}/${path}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
-  const activate = () => run(() => post('activate'), 'RFI accepted and activated.');
-  const assign = () => { if (!ass.user_id) { alert('Select a reviewer.'); return; } run(() => post('assign-reviewer', ass), 'Reviewer assigned and notified.'); };
-  const decide = () => {
-    if (dec.override_used && !dec.override_reason.trim()) { alert('Enter the override reason.'); return; }
-    if (!confirm(`Record final decision: ${pretty(dec.decision)}? This completes the RFI.`)) return;
-    run(() => post('decision', dec), 'Final decision recorded.');
-  };
-  async function resubmit() {
-    const reason = prompt('Reason for resubmission (what was corrected)?'); if (!reason?.trim()) return;
-    try { const n: any = await post('resubmit', { reason }); nav(`/rfis/${n.id}`); } catch (e: any) { alert(e.message); }
-  }
-  async function stateChange(action: 'archive' | 'cancel') {
-    const reason = prompt(`Reason to ${action} this RFI?`); if (!reason?.trim()) return;
-    run(() => post(action, { reason }), action === 'archive' ? 'RFI archived.' : 'RFI cancelled.');
-  }
-  async function saveEdit(e: any) {
-    e.preventDefault();
-    const body: any = { version: d.rfi.version };
-    for (const [k] of EDIT_FIELDS) body[k] = edit[k] === '' ? null : edit[k];
-    if (d.rfi.workflow_status === 'COMPLETED') { body.edit_reason = edit.edit_reason; if (!body.edit_reason?.trim()) { alert('Enter the reason for editing a completed RFI.'); return; } }
-    try { await api(`/rfis/${id}`, { method: 'PUT', body: JSON.stringify(body) }); setEdit(null); setMsg('RFI updated.'); load(); } catch (e: any) { alert(e.message); }
-  }
-
   if (err) return <div className="notice err">{err} <Link className="link" to="/rfis">Back to register</Link></div>;
   if (!d) return <div className="empty">Loading RFI…</div>;
-  const r = d.rfi; const name = (uid: number) => users.find(u => u.id === uid)?.full_name || `User #${uid}`;
-  const active = r.record_state === 'ACTIVE';
-  const reviewers = users.filter(x => REVIEWER_ROLES.includes(x.role) && x.is_active);
-  const pending = d.assignments.filter((a: any) => a.required && a.status !== 'COMPLETED').length;
-  const reviewOf = (aid: number) => d.reviews.find((x: any) => x.assignment_id === aid);
-  const canEdit = active && (r.workflow_status !== 'COMPLETED' || manager);
+  const r = d.rfi, perm = d.permissions, deputy = d.project.deputy_label;
+  const started = d.assignments.some((a: any) => a.status === 'COMPLETED');
+  const live = d.assignments.filter((a: any) => a.status !== 'REPLACED');
+  const disp = d.dispositions.find((x: any) => x.code === dec.disposition_code);
+  const savePlan = () => {
+    if (!plan.length) { alert('Add at least one inspector.'); return; }
+    if (started && !planReason.trim()) { alert('Inspection has started: enter the reason for changing the sequence.'); return; }
+    run(() => post(`/rfis/${id}/assignments`, { assignments: plan.map(u => ({ user_id: u })), reason: planReason || null }), 'Inspection sequence saved and inspectors notified.');
+  };
+  const move = (i: number, delta: number) => { const p = [...plan]; const j = i + delta; if (j < 0 || j >= p.length) return; [p[i], p[j]] = [p[j], p[i]]; setPlan(p); };
+  const submitReview = () => {
+    if (!comment.trim()) { alert('Enter your inspection comments.'); return; }
+    if (!confirm('Submit your review? It will be locked and the next inspector will be notified.')) return;
+    run(() => post(`/rfis/${id}/review`, { assignment_id: perm.review_assignment_id, comment }), 'Review submitted.').then(() => setComment(''));
+  };
+  const decide = () => {
+    if (!disp) { alert('Select a disposition.'); return; }
+    if (disp.requires_section && !(dec.approved_from && dec.approved_to)) { alert('Enter the approved (executed) section.'); return; }
+    if (!confirm(`Record final decision: "${disp.label}"? This completes Rev ${r.revision_no} and issues the DOC_03.`)) return;
+    run(() => post(`/rfis/${id}/decision`, dec), 'Final decision recorded. Completed DOC_03 issued.');
+  };
+  const resubmit = async () => {
+    const reason = prompt('What was corrected? (resubmission reason)'); if (!reason?.trim()) return;
+    const date = prompt('Proposed inspection date (YYYY-MM-DD)'); if (!date) return;
+    const time = prompt('Proposed inspection time (HH:MM, 24-hour)'); if (!time) return;
+    try { const n: any = await post(`/rfis/${id}/resubmit`, { reason, inspection_date: date, inspection_time: time }); nav(`/rfis/${n.id}`); } catch (e: any) { alert(e.message); }
+  };
+  const sendAmend = (e: any) => {
+    e.preventDefault();
+    const changes: any = {}; for (const [k] of AMEND_FIELDS) if ((amend[k] ?? '') !== (r[k] ?? '')) changes[k] = amend[k] === '' ? null : amend[k];
+    if (!Object.keys(changes).length) { alert('Nothing changed.'); return; }
+    if (!amend.reason?.trim()) { alert('Enter the reason for the amendment.'); return; }
+    run(() => post(`/rfis/${id}/amendments`, { changes, reason: amend.reason }), 'Amendment requested. RE/DRE will review it.').then(() => setAmend(null));
+  };
+  const resolve = (aid: number, ok: boolean) => { const c = prompt(ok ? 'Approval comment (optional)' : 'Reason for rejecting the amendment') ?? ''; run(() => post(`/rfis/amendments/${aid}/${ok ? 'approve' : 'reject'}`, { comment: c }), ok ? 'Amendment applied.' : 'Amendment rejected.'); };
 
   return <>
-    <div className="top">
-      <div>
-        <Link to="/rfis" className="link" style={{ fontSize: 14 }}>← RFI Register</Link>
-        <h1 style={{ marginTop: 6 }}><span className="mono" style={{ fontSize: '.85em' }}>{r.rfi_number}</span> · Rev {r.revision_no}</h1>
-        <div className="chips" style={{ marginBottom: 18 }}>
-          <Status value={r.workflow_status} />{r.current_decision && <Status value={r.current_decision} />}
-          {r.record_state !== 'ACTIVE' && <Status value={r.record_state} />}
-          <span className="badge">Version {r.version}</span>
-          {r.summary_id && <Link to={`/summaries/${r.summary_id}`} className="badge" style={{ textDecoration: 'none', color: 'inherit' }}>Summary #{r.summary_id}</Link>}
-        </div>
-      </div>
+    <div className="top"><div>
+      <Link to="/rfis" className="link" style={{ fontSize: 14 }}>← DOC_02 register</Link>
+      <h1 style={{ marginTop: 6 }}><span className="mono" style={{ fontSize: '.85em' }}>{r.rfi_number}</span> · Rev {r.revision_no}</h1>
+      <div className="chips" style={{ marginBottom: 18 }}>
+        <Status value={r.workflow_status} label={r.status_label} />{r.current_decision && <Status value={r.current_decision} />}
+        {r.is_legacy && <Status value="LEGACY" label="Historical record (read-only)" />}{r.short_notice && <Status value="SHORT_NOTICE" label={`Short notice: ${r.notice_hours} h`} />}
+        {d.summary && <Link to={`/summaries/${d.summary.id}`} className="badge" style={{ textDecoration: 'none', color: 'inherit' }}>DOC_01 {d.summary.summary_reference}</Link>}
+        {d.revisions.length > 1 && d.revisions.map((v: any) => v.id !== r.id && <Link key={v.id} to={`/rfis/${v.id}`} className="badge" style={{ textDecoration: 'none', color: 'inherit' }}>Rev {v.revision_no}</Link>)}
+      </div></div>
       <div className="toolbar">
-        <button className="btn secondary" onClick={() => download(`/reports/rfi/${id}.pdf`, `rfi_${r.rfi_number}_rev${r.revision_no}.pdf`)}><Icon name="download" size={16} />Official PDF</button>
-        {canEdit && <button className="btn secondary" onClick={() => setEdit({ ...Object.fromEntries(EDIT_FIELDS.map(([k]) => [k, r[k] ?? ''])), edit_reason: '' })}>Edit details</button>}
-        {manager && active && <><button className="btn secondary" disabled={busy} onClick={() => stateChange('archive')}>Archive</button><button className="btn danger" disabled={busy} onClick={() => stateChange('cancel')}>Cancel RFI</button></>}
-      </div>
-    </div>
+        <button className="btn secondary" onClick={() => download(`/reports/doc03/${id}.pdf`, `DOC03_${r.rfi_number}_rev${r.revision_no}.pdf`)}><Icon name="download" size={16} />DOC_03 PDF</button>
+        {perm.request_amendment && <button className="btn secondary" onClick={() => setAmend({ ...Object.fromEntries(AMEND_FIELDS.map(([k]) => [k, r[k] ?? ''])), reason: '' })}>Request amendment</button>}
+        {perm.resubmit && <button className="btn warn" onClick={resubmit}>Resubmit (next revision)</button>}
+        {perm.cancel && <button className="btn danger" disabled={busy} onClick={() => { const reason = prompt('Reason to cancel this RFI?'); if (reason?.trim()) run(() => post(`/rfis/${id}/cancel`, { reason }), 'RFI cancelled.'); }}>Cancel RFI</button>}
+      </div></div>
     {msg && <div className="notice ok">{msg}</div>}
-    {!active && <div className="notice">This RFI is {r.record_state.toLowerCase()} and can no longer be changed.</div>}
+    {r.is_legacy && <div className="notice">Imported from the historical DOC_02 workbook. There is no DOC_01 batch or DOC_03 review for it in the system; the original status text is preserved: <b>{r.legacy_rfi_status || '(blank)'}</b>.</div>}
 
-    <div className="card">
+    <div className="card"><h3>Request For Work Inspection / Approval</h3>
       <div className="kv">
-        <div><div className="k">Work item</div><div className="v">{pretty(r.work_item)}</div></div>
-        <div><div className="k">Location</div><div className="v mono">{r.chainage_from || '—'}{r.chainage_to ? ` → ${r.chainage_to}` : ''} {r.side || ''}</div></div>
-        <div><div className="k">Requested / Inspection</div><div className="v">{r.requested_date || '—'} / {r.inspection_date || '—'}</div></div>
-        <div><div className="k">Work status</div><div className="v">{r.work_status || '—'}</div></div>
-        {r.structure_type && <div><div className="k">Structure type</div><div className="v">{r.structure_type}</div></div>}
-        {r.test_name && <div><div className="k">Test</div><div className="v">{r.test_name}</div></div>}
-        <div><div className="k">Material source</div><div className="v">{r.material_source_designation || r.material_source || '—'}</div></div>
-        <div><div className="k">Created by</div><div className="v">{name(r.created_by)}</div></div>
+        <div><div className="k">Project</div><div className="v">{d.project.code}</div></div>
+        <div><div className="k">Work item</div><div className="v">{r.work_item || '—'}</div></div>
+        <div><div className="k">Location / chainage</div><div className="v mono">{loc(r)}</div></div>
+        <div><div className="k">Inspection</div><div className="v">{fmtDay(r.inspection_date)} {r.inspection_time || r.inspection_time_text || ''}</div></div>
+        <div><div className="k">Requested</div><div className="v">{fmtDay(r.requested_date)} {r.requested_time || ''}</div></div>
+        <div><div className="k">BOQ item</div><div className="v">{r.boq_item || '—'}</div></div>
+        <div><div className="k">Material source</div><div className="v">{r.material_source || r.material_source_designation || '—'}{r.material_source_offset ? ` / ${r.material_source_offset}` : ''}</div></div>
+        <div><div className="k">Order of inspection</div><div className="v">{['—', 'First', 'Second', 'Third'][r.inspection_order || 0]}</div></div>
+        <div><div className="k">Submitted by</div><div className="v">{d.summary?.submitted_by_name || d.created_by_name || '—'}{d.summary?.submitted_at && <> · {fmtDate(d.summary.submitted_at)}</>}</div></div>
+        <div><div className="k">Received by</div><div className="v">{d.received_by_name || '—'}{r.received_at && <> · {fmtDate(r.received_at)}</>}</div></div>
+        {(r.approved_from || r.approved_to) && <div><div className="k">Approved section</div><div className="v mono">{r.approved_from} – {r.approved_to}</div></div>}
+        <div><div className="k">Enclosure sheets</div><div className="v">{r.enclosure_sheets ?? '—'}</div></div>
       </div>
-      <p><b>Description:</b> {r.description}</p>
-      {r.contractor_request && <p><b>Contractor request:</b> {r.contractor_request}</p>}
+      <p><b>Works description:</b> {r.contractor_request || r.description}</p>
+      {r.contractor_request && r.description && <p><b>Activity:</b> {r.description}</p>}
+      {r.work_categories?.length > 0 && <p><b>Work category:</b> {r.work_categories.join(', ').replaceAll('_', ' ')}</p>}
       {r.remarks && <p><b>Remarks:</b> {r.remarks}</p>}
-      <div className="toolbar">
-        {manager && active && ['DRAFT', 'SUBMITTED'].includes(r.workflow_status) && <button className="btn" disabled={busy} onClick={activate}><Icon name="check" size={16} />Accept / Activate</button>}
-        {active && r.current_decision === 'REJECTED' && <button className="btn warn" onClick={resubmit}>Create next revision</button>}
-      </div>
-      {manager && active && r.workflow_status === 'DRAFT' && r.summary_id && <p className="muted" style={{ fontSize: 13, margin: '10px 0 0' }}>This RFI belongs to a summary that has not been submitted yet. It can be activated after the summary is submitted.</p>}
     </div>
 
-    {manager && active && REVIEWABLE.includes(r.workflow_status) && <div className="card">
-      <h3>Assign reviewer</h3>
-      {suggested.length > 0 && <div className="notice">Suggested by reviewer rules: {suggested.map((x: any) => `${pretty(x.reviewer_role)}${x.required ? ' (required)' : ''}`).join(', ')}</div>}
-      {reviewers.length === 0 ? <div className="notice">No active inspector / reviewer accounts exist yet. Create them on the Users page.</div> :
-        <div className="grid">
-          <div><label>Reviewer</label><select value={ass.user_id} onChange={e => { const uid = +e.target.value; const x = users.find(z => z.id === uid); setAss({ ...ass, user_id: uid, reviewer_role: REVIEWER_ROLES.includes(x?.role) ? x.role : ass.reviewer_role }); }}>{reviewers.map(u => <option key={u.id} value={u.id}>{u.full_name} — {pretty(u.role)}</option>)}</select></div>
-          <div><label>Review role</label><select value={ass.reviewer_role} onChange={e => setAss({ ...ass, reviewer_role: e.target.value })}>{REVIEWER_ROLES.map(x => <option key={x} value={x}>{pretty(x)}</option>)}</select></div>
-          <div><label>Required?</label><select value={String(ass.required)} onChange={e => setAss({ ...ass, required: e.target.value === 'true' })}><option value="true">Yes</option><option value="false">No (advisory)</option></select></div>
-        </div>}
-      <div style={{ marginTop: 14 }}><button className="btn" disabled={busy || !reviewers.length} onClick={assign}>Assign reviewer</button></div>
+    {perm.assign && <div className="card" style={{ borderColor: 'var(--amber)' }}>
+      <h3>{live.length ? 'Inspection sequence' : 'Assign inspectors and review order'}</h3>
+      <p className="muted" style={{ marginTop: 0 }}>Inspectors review strictly in this order. Only the first inspector can submit; each next inspector is activated when the previous one submits. {started && 'Completed reviews stay locked; you are changing the remaining sequence.'}</p>
+      {suggested.length > 0 && <div className="notice">Reviewer rules suggest: {suggested.map((x: any) => roleLabel(x.reviewer_role)).join(' → ')}</div>}
+      {members.length === 0 ? <div className="notice">No inspectors (Category 2.2) are members of this project. The administrator must add them.</div> : <>
+        <ol>{plan.map((uid, i) => { const m = members.find(x => x.user_id === uid); return <li key={uid} style={{ marginBottom: 6 }}>{m ? `${m.full_name} — ${m.role_label}` : `User ${uid}`}{' '}
+          <button className="btn secondary sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">↑</button> <button className="btn secondary sm" onClick={() => move(i, 1)} disabled={i === plan.length - 1} aria-label="Move down">↓</button> <button className="btn secondary sm" onClick={() => setPlan(plan.filter(x => x !== uid))}>Remove</button></li>; })}</ol>
+        <div className="toolbar"><select defaultValue="" onChange={e => { const v = +e.target.value; if (v && !plan.includes(v)) setPlan([...plan, v]); e.target.value = ''; }}>
+          <option value="">+ Add inspector…</option>{members.filter(m => !plan.includes(m.user_id)).map(m => <option key={m.user_id} value={m.user_id}>{m.full_name} — {m.role_label}</option>)}</select></div>
+        {(started || live.length > 0) && <div style={{ marginTop: 10 }}><label>Reason for change {started ? '(required)' : '(optional)'}</label><input value={planReason} onChange={e => setPlanReason(e.target.value)} placeholder="e.g. Surveyor on leave" /></div>}
+        <div style={{ marginTop: 12 }}><button className="btn" disabled={busy || !plan.length} onClick={savePlan}>Save sequence &amp; notify</button></div>
+      </>}
     </div>}
 
-    <div className="card">
-      <h3>Reviews</h3>
+    <div className="card"><h3>Action by the Engineer – inspector reviews</h3>
       {d.assignments.length ? <div className="table-wrap"><table>
-        <thead><tr><th>Reviewer</th><th>Role</th><th>Required</th><th>Status</th><th>Recommendation</th><th>Comment</th></tr></thead>
-        <tbody>{d.assignments.map((a: any) => { const rv = reviewOf(a.id); return <tr key={a.id}>
-          <td>{name(a.user_id)}</td><td>{pretty(a.reviewer_role)}</td><td>{a.required ? 'Yes' : 'No'}</td><td><Status value={a.status} /></td>
-          <td>{rv ? pretty(rv.recommendation) : '—'}</td><td>{rv?.comment || ''}{a.user_id === me.id && a.status !== 'COMPLETED' && <Link className="link" to="/my-inspections"> Submit my review →</Link>}</td>
-        </tr>; })}</tbody>
-      </table></div> : <div className="empty">No reviewers assigned yet.</div>}
+        <thead><tr><th>#</th><th>Inspector</th><th>DOC_03 field</th><th>Status</th><th>Comments</th><th>Submitted</th></tr></thead>
+        <tbody>{d.assignments.map((a: any) => <tr key={a.id} style={a.status === 'REPLACED' ? { opacity: .55 } : undefined}>
+          <td>{a.sequence_no ?? '—'}</td><td>{a.user_name}</td><td>{roleLabel(a.reviewer_role)}</td><td><Status value={a.status} />{a.change_reason && a.status === 'REPLACED' && <div className="muted" style={{ fontSize: 12 }}>{a.change_reason}</div>}</td>
+          <td style={{ whiteSpace: 'pre-wrap' }}>{a.review?.comment || ''}</td><td>{a.review ? fmtDate(a.review.reviewed_at) : ''}</td></tr>)}</tbody>
+      </table></div> : <div className="empty">{r.is_legacy ? 'No inspector reviews were recorded for this historical RFI.' : 'No inspectors assigned yet.'}</div>}
+      {perm.review_assignment_id && <div style={{ marginTop: 14 }}>
+        <label>Your inspection comments (your designated DOC_03 field)</label>
+        <textarea value={comment} onChange={e => setComment(e.target.value)} placeholder="Site findings, levels, FDT results, corrections required…" rows={4} />
+        <div className="toolbar" style={{ marginTop: 10 }}><button className="btn" disabled={busy || !comment.trim()} onClick={submitReview}>Submit my review</button></div>
+      </div>}
+      {!perm.review_assignment_id && d.assignments.some((a: any) => a.status === 'PENDING' && INSPECTORS.includes(d.my_role) && a.user_name) && d.my_role && INSPECTORS.includes(d.my_role) &&
+        <div className="notice" style={{ marginTop: 12 }}>You will be able to submit when the inspectors before you have submitted.</div>}
     </div>
 
-    {manager && active && REVIEWABLE.includes(r.workflow_status) && <div className="card">
-      <h3>RE / ARE final decision</h3>
-      {pending > 0 && <div className="notice">{pending} required review(s) still pending. Recording a decision now requires an override with a reason.</div>}
-      <div className="grid">
-        <div><label>Decision</label><select value={dec.decision} onChange={e => setDec({ ...dec, decision: e.target.value })}>{['APPROVED', 'REJECTED', 'ON_PROGRESS', 'INFORMATION_ONLY'].map(x => <option key={x} value={x}>{pretty(x)}</option>)}</select></div>
-        {pending > 0 && <div><label>Override pending reviews?</label><select value={String(dec.override_used)} onChange={e => setDec({ ...dec, override_used: e.target.value === 'true' })}><option value="false">No</option><option value="true">Yes</option></select></div>}
+    {perm.decide && <div className="card" style={{ borderColor: 'var(--green, #12805c)' }}>
+      <h3>RE/{deputy} final disposition</h3>
+      <div className="grid"><div><label>Disposition</label><select value={dec.disposition_code} onChange={e => setDec({ ...dec, disposition_code: e.target.value })}>
+        <option value="">Select…</option>{d.dispositions.map((x: any) => <option key={x.code} value={x.code}>{x.label}</option>)}</select></div>
+        {(disp?.requires_section || disp?.decision === 'APPROVED') && <><div><label>Approved from {disp?.requires_section && '*'}</label><input value={dec.approved_from} placeholder={r.chainage_from || ''} onChange={e => setDec({ ...dec, approved_from: e.target.value })} /></div>
+          <div><label>Approved to {disp?.requires_section && '*'}</label><input value={dec.approved_to} placeholder={r.chainage_to || ''} onChange={e => setDec({ ...dec, approved_to: e.target.value })} /></div></>}
       </div>
-      <div style={{ marginTop: 12 }}><label>Comment</label><textarea value={dec.comment} onChange={e => setDec({ ...dec, comment: e.target.value })} /></div>
-      {dec.override_used && pending > 0 && <div style={{ marginTop: 12 }}><label>Override reason</label><textarea required value={dec.override_reason} onChange={e => setDec({ ...dec, override_reason: e.target.value })} /></div>}
-      <div style={{ marginTop: 14 }}><button className="btn success" disabled={busy || (pending > 0 && !dec.override_used)} onClick={decide}>Save final decision</button></div>
+      <div style={{ marginTop: 12 }}><label>Remark</label><textarea value={dec.comment} onChange={e => setDec({ ...dec, comment: e.target.value })} /></div>
+      <div style={{ marginTop: 12 }}><label>Conditions (if any)</label><input value={dec.conditions} onChange={e => setDec({ ...dec, conditions: e.target.value })} /></div>
+      <p className="muted" style={{ fontSize: 13 }}>Disposition options are configurable per project and remain subject to client approval.</p>
+      <button className="btn success" disabled={busy || !dec.disposition_code} onClick={decide}>Record final decision</button>
     </div>}
 
-    {d.decisions.length > 0 && <div className="card"><h3>Decisions</h3><div className="table-wrap"><table>
-      <thead><tr><th>Date</th><th>Rev</th><th>Decision</th><th>By</th><th>Comment</th><th>Override</th></tr></thead>
-      <tbody>{d.decisions.map((x: any) => <tr key={x.id}><td>{fmtDate(x.decided_at)}</td><td>{x.revision_no}</td><td><Status value={x.decision} /></td><td>{name(x.decided_by)}</td><td>{x.comment || ''}</td><td>{x.override_used ? `Yes — ${x.override_reason}` : 'No'}</td></tr>)}</tbody>
-    </table></div></div>}
+    {d.decisions.length > 0 && <div className="card"><h3>Final decision</h3><div className="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Rev</th><th>Disposition</th><th>By</th><th>Approved section</th><th>Remark</th></tr></thead>
+      <tbody>{d.decisions.map((x: any) => <tr key={x.id}><td>{fmtDate(x.decided_at)}</td><td>{x.revision_no}</td><td>{x.disposition_label || <Status value={x.decision} />}</td><td>{x.decided_by_name}</td>
+        <td className="mono">{x.approved_from || x.approved_to ? `${x.approved_from || ''} – ${x.approved_to || ''}` : '—'}</td><td>{x.comment}{x.conditions && <div className="muted">Conditions: {x.conditions}</div>}</td></tr>)}</tbody></table></div>
+      {d.issued_documents[0] && <p className="muted" style={{ fontSize: 12 }}>DOC_03 issued {fmtDate(d.issued_documents[0].issued_at)} · SHA-256 {d.issued_documents[0].sha256.slice(0, 16)}…</p>}</div>}
 
-    <Attachments entityType="rfi" entityId={+id!} canUpload={active} />
+    {d.amendments.length > 0 && <div className="card"><h3>Amendments</h3><div className="table-wrap"><table>
+      <thead><tr><th>Requested</th><th>By</th><th>Changes (original → amended)</th><th>Reason</th><th>Status</th><th></th></tr></thead>
+      <tbody>{d.amendments.map((a: any) => <tr key={a.id}><td>{fmtDate(a.requested_at)}</td><td>{a.requested_by_name}</td>
+        <td>{Object.entries(a.changes).map(([k, v]: any) => <div key={k}><b>{k}</b>: {String(v.old ?? '—')} → {String(v.new ?? '—')}</div>)}</td><td>{a.reason}</td>
+        <td><Status value={a.status} />{a.resolved_by_name && <div className="muted" style={{ fontSize: 12 }}>{a.resolved_by_name} · {a.resolution_comment}</div>}</td>
+        <td>{a.status === 'PENDING' && perm.resolve_amendment && <><button className="btn sm success" onClick={() => resolve(a.id, true)}>Approve</button> <button className="btn sm danger" onClick={() => resolve(a.id, false)}>Reject</button></>}</td></tr>)}</tbody></table></div></div>}
+
+    <Attachments entityType="rfi" entityId={+id!} canUpload={!r.is_legacy && r.record_state === 'ACTIVE' && (perm.edit_draft || perm.assign || !!perm.review_assignment_id || perm.request_amendment)} />
 
     <div className="card"><h3>Status history</h3>{d.history?.length ? <div className="table-wrap"><table>
-      <thead><tr><th>Date</th><th>Workflow</th><th>Decision</th><th>Changed by</th><th>Reason</th></tr></thead>
-      <tbody>{d.history.map((h: any) => <tr key={h.id}><td>{fmtDate(h.created_at)}</td><td><Status value={h.workflow_status} /></td><td><Status value={h.decision} /></td><td>{name(h.changed_by)}</td><td>{h.reason || ''}</td></tr>)}</tbody>
-    </table></div> : <div className="empty">No history yet.</div>}</div>
+      <thead><tr><th>Date</th><th>Status</th><th>By</th><th>Reason</th></tr></thead>
+      <tbody>{d.history.map((h: any) => <tr key={h.id}><td>{fmtDate(h.created_at)}</td><td><Status value={h.workflow_status} /></td><td>{h.changed_by_name}</td><td>{h.reason || ''}</td></tr>)}</tbody>
+    </table></div> : <div className="empty">No history recorded.</div>}</div>
 
-    {edit && <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) setEdit(null); }}>
-      <form className="modal" onSubmit={saveEdit}>
-        <div className="section-title"><h3>Edit RFI {r.rfi_number}</h3><button type="button" className="icon-btn" onClick={() => setEdit(null)} aria-label="Close"><Icon name="x" /></button></div>
-        <div className="grid">{EDIT_FIELDS.filter(([, , t]) => t !== 'textarea').map(([k, l, t]) => <div key={k}><label>{l}</label><input type={t || 'text'} value={edit[k] ?? ''} onChange={e => setEdit({ ...edit, [k]: e.target.value })} /></div>)}</div>
-        {EDIT_FIELDS.filter(([, , t]) => t === 'textarea').map(([k, l]) => <div key={k} style={{ marginTop: 12 }}><label>{l}</label><textarea required={k === 'description'} value={edit[k] ?? ''} onChange={e => setEdit({ ...edit, [k]: e.target.value })} /></div>)}
-        {r.workflow_status === 'COMPLETED' && <div style={{ marginTop: 12 }}><label>Reason for editing a completed RFI</label><input required value={edit.edit_reason} onChange={e => setEdit({ ...edit, edit_reason: e.target.value })} /></div>}
-        <div className="toolbar" style={{ marginTop: 16 }}><button className="btn">Save changes</button><button type="button" className="btn secondary" onClick={() => setEdit(null)}>Cancel</button></div>
-      </form>
-    </div>}
+    {amend && <div className="modal-bg" onClick={e => { if (e.target === e.currentTarget) setAmend(null); }}>
+      <form className="modal" onSubmit={sendAmend}>
+        <div className="section-title"><h3>Request amendment – {r.rfi_number}</h3><button type="button" className="icon-btn" onClick={() => setAmend(null)} aria-label="Close"><Icon name="x" /></button></div>
+        <p className="muted">Submitted data is locked. The RE/DRE must approve the change; the original values are kept in the record.</p>
+        <div className="grid">{AMEND_FIELDS.map(([k, l, t]) => <div key={k}><label>{l}</label><input type={t || 'text'} value={amend[k] ?? ''} onChange={e => setAmend({ ...amend, [k]: e.target.value })} /></div>)}</div>
+        <div style={{ marginTop: 12 }}><label>Reason *</label><input required value={amend.reason} onChange={e => setAmend({ ...amend, reason: e.target.value })} /></div>
+        <div className="toolbar" style={{ marginTop: 16 }}><button className="btn">Send for approval</button><button type="button" className="btn secondary" onClick={() => setAmend(null)}>Cancel</button></div>
+      </form></div>}
   </>;
 }

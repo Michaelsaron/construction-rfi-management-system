@@ -12,12 +12,23 @@ from app.security import hash_password
 
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/'data'/'client_import'
-PROJECT_CODE='DUBTI-LOT-II'
-PROJECT_NAME='Construction Works Of Dubti-Arrisa-Adigala-Biyokebob; Lot II: KM 72+000-KM 150+000 Design and Build Road Project'
-EMPLOYER='ETHIOPIAN ROADS AUTHORITY'
-CONTRACTOR='MACRO GENERAL CONTRACTOR & TRADING P.L.C.'
-CONSULTANT='ELDA ENGINEERING CONSULTANTS in Sub-Consultancy with DAMARA CONSULTING ENGINEERS'
-CLIENT_EMAIL='frew99@gmail.com'
+# Client-identifying values are NOT kept in this public repository.
+# Provide them in DATA/client_config.json (git-ignored; copy backend/data/client_config.example.json)
+# or as environment variables CLIENT_PROJECT_CODE, CLIENT_PROJECT_NAME, CLIENT_EMPLOYER,
+# CLIENT_CONTRACTOR, CLIENT_CONSULTANT, CLIENT_DEPUTY_EMAIL.
+import json, os, secrets
+_CFG_FILE=DATA/'client_config.json'
+_CFG=json.loads(_CFG_FILE.read_text()) if _CFG_FILE.exists() else {}
+def _cfg(key):
+    v=os.getenv('CLIENT_'+key.upper()) or _CFG.get(key)
+    if not v: raise SystemExit(f'Missing client setting {key!r}: set CLIENT_{key.upper()} or add it to {_CFG_FILE}')
+    return v
+PROJECT_CODE=_cfg('project_code')
+PROJECT_NAME=_cfg('project_name')
+EMPLOYER=_cfg('employer')
+CONTRACTOR=_cfg('contractor')
+CONSULTANT=_cfg('consultant')
+CLIENT_EMAIL=_cfg('deputy_email')
 
 STATUS_MAP={
  'accepted':'APPROVED','accepted as noted':'APPROVED','approved':'APPROVED','approved: for further works':'APPROVED','approved: compliance to comments required':'APPROVED',
@@ -135,12 +146,15 @@ def main():
         admin=db.scalar(select(User).where(User.role=='ADMIN'))
         if not admin: raise RuntimeError('Start the app once so an admin exists')
         are=db.scalar(select(User).where(User.email==CLIENT_EMAIL))
+        temp_password=None
         if not are:
-            # Safe local temporary password; user must change it immediately in Users screen.
-            are=User(full_name='Client ARE',email=CLIENT_EMAIL,password_hash=hash_password('ChangeMe_ARE_2026!'),role='ARE',must_change_password=True);db.add(are);db.commit();db.refresh(are)
+            # Random one-time password, printed once; the user must change it at first sign-in.
+            temp_password=secrets.token_urlsafe(12)
+            are=User(full_name='Client DRE',email=CLIENT_EMAIL,password_hash=hash_password(temp_password),role='DRE',must_change_password=True);db.add(are);db.commit();db.refresh(are)
         import_info(db,p.id);import_work_list(db,p.id);import_materials(db,p.id);import_row(db,p.id);import_earthworks(db,p.id);import_daily(db,p.id);import_test_and_mix(db,p.id);db.commit()
         imported,skipped=import_rfis(db,p.id,admin.id);db.commit()
-        print({'project_id':p.id,'client_are_email':are.email,'historical_imported':imported,'historical_skipped':skipped})
-        print('TEMP password for local client account: ChangeMe_ARE_2026!  -> change immediately before production')
+        print({'project_id':p.id,'client_deputy_email':are.email,'historical_imported':imported,'historical_skipped':skipped})
+        if temp_password:
+            print('One-time password for the new DRE account (shown once; hand over privately):',temp_password)
     finally: db.close()
 if __name__=='__main__': main()

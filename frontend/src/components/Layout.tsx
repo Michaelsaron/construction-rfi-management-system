@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
-import { api, logout, syncPending } from '../lib/api';
+import { api, logout, syncPending, getUser, setUser, currentProjectId, setCurrentProject, projectRole, roleLabel, isMgmt, isInspector, isAdmin as adminUser } from '../lib/api';
 import { pendingCount } from '../lib/offline';
 import Icon from './Icon';
 import { BrandMark } from './Brand';
 import { installApp, isStandalone, onInstallChange } from '../lib/pwa';
 
-type Item = { to: string; label: string; icon: string; admin?: boolean };
+type Item = { to: string; label: string; icon: string; show?: () => boolean };
 const groups: { title: string; items: Item[] }[] = [
   { title: 'Operations', items: [
     { to: '/', label: 'Dashboard', icon: 'dashboard' },
-    { to: '/summaries', label: 'RFI Summaries', icon: 'layers' },
-    { to: '/rfis', label: 'RFI Register', icon: 'clipboard' },
-    { to: '/my-inspections', label: 'My Inspections', icon: 'hardhat' },
+    { to: '/summaries', label: 'DOC_01 Submissions', icon: 'layers' },
+    { to: '/rfis', label: 'DOC_02 RFI Register', icon: 'clipboard' },
+    { to: '/my-inspections', label: 'My Inspections', icon: 'hardhat', show: () => isInspector() },
     { to: '/daily-progress', label: 'Daily Progress', icon: 'progress' },
   ] },
   { title: 'Insights', items: [
@@ -20,14 +20,13 @@ const groups: { title: string; items: Item[] }[] = [
     { to: '/notifications', label: 'Notifications', icon: 'bell' },
   ] },
   { title: 'Administration', items: [
-    { to: '/master-data', label: 'Reference Data', icon: 'database', admin: true },
-    { to: '/reviewer-rules', label: 'Reviewer Rules', icon: 'shield', admin: true },
-    { to: '/projects', label: 'Projects', icon: 'building', admin: true },
-    { to: '/users', label: 'Users', icon: 'users', admin: true },
-    { to: '/audit', label: 'Audit Log', icon: 'history', admin: true },
+    { to: '/master-data', label: 'Reference Data', icon: 'database', show: () => adminUser() || isMgmt() },
+    { to: '/reviewer-rules', label: 'Reviewer Rules', icon: 'shield', show: () => adminUser() || isMgmt() },
+    { to: '/projects', label: 'Projects & Members', icon: 'building', show: () => adminUser() },
+    { to: '/users', label: 'Users', icon: 'users', show: () => adminUser() },
+    { to: '/audit', label: 'Audit Log', icon: 'history', show: () => adminUser() || isMgmt() },
   ] },
 ];
-const ADMIN_ROLES = ['ADMIN', 'RE', 'ARE', 'RE_ARE'];
 
 function current(path: string) {
   for (const g of groups) for (const i of g.items) {
@@ -45,11 +44,12 @@ export default function Layout() {
   const [pending, setPending] = useState(0);
   const [, force] = useState(0);
   const [open, setOpen] = useState(false);
-  const [project, setProject] = useState<any>(null);
   const [unread, setUnread] = useState(0);
   const loc = useLocation();
-  const u = JSON.parse(localStorage.getItem('user') || '{"name":"User","role":"ADMIN"}');
-  const isAdmin = ADMIN_ROLES.includes(u.role);
+  const u = getUser();
+  const [pid, setPid] = useState<number | null>(currentProjectId());
+  const [projects, setProjects] = useState<any[]>([]);
+  const myRole = projectRole(pid);
   const initials = String(u.name || 'U').split(/\s+/).map((s: string) => s[0]).slice(0, 2).join('').toUpperCase();
   const here = current(loc.pathname);
 
@@ -61,12 +61,13 @@ export default function Layout() {
     window.addEventListener('notifications-changed', poll);
     return () => { clearInterval(t); window.removeEventListener('notifications-changed', poll); };
   }, [loc.pathname]);
-  useEffect(() => { api('/me').then((m: any) => localStorage.setItem('user', JSON.stringify(m))).catch(() => {}); }, []);
+  useEffect(() => { api('/me').then((m: any) => { setUser(m); force(x => x + 1); }).catch(() => {}); }, []);
+  useEffect(() => { const on = () => setPid(currentProjectId()); window.addEventListener('project-changed', on); return () => window.removeEventListener('project-changed', on); }, []);
   useEffect(() => { document.title = `${here.label} · Construction RFI`; }, [here.label]);
   useEffect(() => {
     const refresh = () => pendingCount().then(setPending).catch(() => {});
     refresh();
-    api('/projects').then((p: any[]) => setProject(p?.[0] || null)).catch(() => {});
+    api('/projects').then((p: any[]) => { setProjects(p || []); if (!currentProjectId() && p?.[0]) setCurrentProject(p[0].id); }).catch(() => {});
     const on = () => { syncPending().then(refresh); };
     window.addEventListener('online', on);
     const off = onInstallChange(() => force(x => x + 1));
@@ -82,15 +83,19 @@ export default function Layout() {
           <BrandMark />
           <div><div className="t1">Construction RFI</div><div className="t2">Site Control System</div></div>
         </NavLink>
-        {project && (
-          <div className="sb-project" title={project.name}>
-            <div className="k">Active project</div>
-            <div className="v">{project.code}</div>
+        {projects.length > 0 && (
+          <div className="sb-project" title={projects.find(p => p.id === pid)?.name}>
+            <label className="k" htmlFor="project-select">Active project</label>
+            <select id="project-select" value={pid || ''} onChange={e => setCurrentProject(+e.target.value)} style={{ width: '100%', marginTop: 4 }}>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.code}</option>)}
+            </select>
+            <div className="k" style={{ marginTop: 6 }}>{roleLabel(myRole)}</div>
           </div>
         )}
+        {projects.length === 0 && !adminUser() && <div className="sb-project"><div className="k">No project access</div><div className="v" style={{ fontSize: 12 }}>Ask the administrator to add you to a project.</div></div>}
         <nav className="sb-nav">
           {groups.map(g => {
-            const items = g.items.filter(i => !i.admin || isAdmin);
+            const items = g.items.filter(i => !i.show || i.show());
             if (!items.length) return null;
             return (
               <div key={g.title}>
@@ -106,7 +111,7 @@ export default function Layout() {
         </nav>
         <div className="sb-foot">
           <div className="avatar">{initials}</div>
-          <NavLink to="/change-password" className="who" style={{ textDecoration: 'none' }} title="Change password"><div className="nm">{u.name}</div><div className="rl">{String(u.role).replaceAll('_', ' / ')} · Password</div></NavLink>
+          <NavLink to="/change-password" className="who" style={{ textDecoration: 'none' }} title="Change password"><div className="nm">{u.name}</div><div className="rl">{roleLabel(myRole || u.role)} · Password</div></NavLink>
           <button className="icon-btn" style={{ background: 'transparent', borderColor: 'var(--steel-line)', color: '#c5d0dc' }} onClick={logout} title="Sign out" aria-label="Sign out">
             <Icon name="logout" />
           </button>
@@ -131,7 +136,7 @@ export default function Layout() {
             <NavLink to="/notifications" className="icon-btn" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} title="Notifications"><Icon name="bell" />{unread > 0 && <span className="count-dot">{unread > 99 ? '99+' : unread}</span>}</NavLink>
           </div>
         </header>
-        <div className="content"><Outlet /></div>
+        <div className="content"><Outlet key={pid || 0} /></div>
       </main>
     </div>
   );

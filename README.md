@@ -5,7 +5,7 @@ React PWA + FastAPI + MySQL for RFI summaries, individual RFIs, technical review
 ## Important
 - Keep the existing MySQL volume. **Do not run `docker compose down -v`.**
 - This package is production-oriented, but public production still requires a VPS, domain/hostname, HTTPS certificate, SMTP account and off-server backup destination.
-- The supplied client data belongs to the Dubti-Arrisa-Adigala-Biyokebob Lot II project.
+- The supplied client data belongs to one specific client project (identifiers are kept outside this repository).
 
 ## 1. Local startup
 ```bash
@@ -18,13 +18,13 @@ Open:
 - API docs: http://localhost:8000/docs
 
 ## 2. Import the real client project + Excel reference data + historical RFIs
-Run after the containers are up:
+First copy `backend/data/client_config.example.json` to `backend/data/client_import/client_config.json` (git-ignored) and fill in the client's project and DRE details. Then run after the containers are up:
 ```bash
 docker compose exec backend python scripts/import_client_bundle.py
 ```
 This creates/updates:
-- project `DUBTI-LOT-II`
-- ARE account `frew99@gmail.com`
+- project `<PROJECT_CODE>`
+- DRE account (email from the config file)
 - Work_List / structure types / dependent descriptions
 - road types, directions, sides, work statuses
 - material-source types and dependent material sources
@@ -35,10 +35,7 @@ This creates/updates:
 - concrete-mix designation values that exist in the source file
 - historical RFI register
 
-Temporary local ARE password created by the importer:
-`ChangeMe_ARE_2026!`
-
-Change it immediately before real use. The importer writes `backend/migration_conflicts.csv` inside the container when duplicate legacy RFI numbers are found.
+If the DRE account is new, the importer prints a random one-time password once. Hand it over privately; the user must change it at first sign-in. The importer writes `backend/migration_conflicts.csv` inside the container when duplicate legacy RFI numbers are found.
 
 ## 3. Workflow
 1. Contractor / Site Engineer creates RFI Summary.
@@ -129,6 +126,14 @@ caffeinate -dis                                       # keep the Mac awake while
 The link changes every time the tunnel restarts. Stop: `docker compose -f docker-compose.public.yml down`. Back to local dev: `docker compose up -d`.
 Demo credentials are in `DEMO_CREDENTIALS.txt` (private, git-ignored).
 
-## Automated API test
+## Automated tests (release 5.0.0-srs)
+```bash
+cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+TEST_DATABASE_URL=mysql+pymysql://root:<pw>@127.0.0.1:3307/rfi_test .venv/bin/pytest
+```
+The suite refuses to run unless the database name ends in `_test`. It drops and recreates that database. Never point it at `rfi_db`.
+SRS analysis, decisions, migration runbook: `docs/srs/`.
+
+## Legacy automated API test (pre-5.0)
 `python3 scripts/e2e_api_test.py http://localhost:8001` runs every backend function across all roles (181 checks).
 Point it ONLY at a throwaway test database — it creates users, projects and RFIs.

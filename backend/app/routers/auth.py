@@ -19,7 +19,7 @@ def login(data:LoginIn,db:Session=Depends(get_db)):
 
 @router.post('/forgot-password')
 def forgot(data:ForgotPasswordIn,db:Session=Depends(get_db)):
-    u=db.scalar(select(User).where(User.email==data.email))
+    u=db.scalar(select(User).where(User.email==data.email.lower()))
     if u and u.is_active:
         u.reset_token=secrets.token_urlsafe(32);u.reset_expires_at=datetime.utcnow()+timedelta(hours=1);db.commit()
         base=settings.frontend_origin.rstrip('/')

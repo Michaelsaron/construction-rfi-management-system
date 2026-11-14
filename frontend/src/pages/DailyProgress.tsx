@@ -12,7 +12,7 @@ export default function DailyProgress(){
  const role=String(user.role||'').toUpperCase();
  const load=()=>api('/daily-progress?limit=500').then(setRows).catch((e:any)=>setError(e.message));
  useEffect(()=>{load();api('/projects').then((p:any[])=>{setProjects(p);if(p[0])setF((x:any)=>({...x,project_id:p[0].id}))}).catch((e:any)=>setError(e.message))},[]);
- useEffect(()=>{if(!f.project_id)return;api(`/rfis?project_id=${f.project_id}&limit=1000`).then(setRfis).catch(()=>setRfis([]));api(`/master-data?project_id=${f.project_id}`).then(setMaster).catch(()=>setMaster([]))},[f.project_id]);
+ useEffect(()=>{if(!f.project_id)return;api(`/rfis?project_id=${f.project_id}&limit=500`).then((d:any)=>setRfis(d.items||[])).catch(()=>setRfis([]));api(`/master-data?project_id=${f.project_id}`).then(setMaster).catch(()=>setMaster([]))},[f.project_id]);
  const vals=(cat:string,parent?:string)=>master.filter(x=>x.category===cat&&x.is_active!==false&&(!parent||x.parent_value===parent)).map(x=>x.value).filter((v:string,i:number,a:string[])=>a.indexOf(v)===i);
  const statuses=useMemo(()=>vals('DAILY_STATUS',f.work_item),[master,f.work_item]);
  const filtered=rfis.filter(r=>`${r.rfi_number} ${r.work_item} ${r.description||''}`.toLowerCase().includes(rfiSearch.toLowerCase())).slice(0,60);

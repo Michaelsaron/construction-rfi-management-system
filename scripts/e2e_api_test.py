@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""End-to-end API test for the Construction RFI system.
+"""LEGACY (pre-5.0.0-srs) end-to-end API test - superseded by backend/tests (pytest).
+It targets the old workflow endpoints (/activate, /assign-reviewer, global roles) and will fail on 5.0.0-srs.
+
+End-to-end API test for the Construction RFI system.
 
 Runs every backend function across all roles against a THROWAWAY database.
 NEVER point this at the production API — it creates users, projects and RFIs.

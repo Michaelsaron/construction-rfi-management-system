@@ -1,135 +1,68 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../lib/api';
-import Icon from '../components/Icon';
-import Status, { pretty } from '../components/Status';
+import { api, currentProjectId, fmtDate, fmtDay, loc, roleLabel, deputyLabel } from '../lib/api';
+import Status from '../components/Status';
 
-// Validated palette (light/dark) for the decision mix; every segment also carries a text label.
-const MIX = [
-  { key: 'approved', label: 'Approved', color: 'var(--success)' },
-  { key: 'on_progress', label: 'On Progress', color: 'var(--info)' },
-  { key: 'rejected', label: 'Rejected', color: 'var(--danger)' },
-  { key: 'information_only', label: 'Information Only', color: 'var(--neutral)' },
-];
-
-const STEPS = [
-  ['Summary created', 'Contractor drafts the RFI Summary and adds individual RFIs.'],
-  ['Submitted & locked', 'Summary submitted to the Resident Engineer.'],
-  ['Activated by RE/ARE', 'RFI accepted and technical reviewers assigned.'],
-  ['Technical review', 'Reviewers inspect on site and submit recommendations.'],
-  ['Final decision', 'RE/ARE approves, rejects or records for information.'],
-];
-
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+function RfiTable({ rows, empty, extra }: { rows: any[]; empty: string; extra?: (r: any) => React.ReactNode }) {
+  if (!rows?.length) return <div className="empty">{empty}</div>;
+  return <div className="table-wrap"><table>
+    <thead><tr><th>RFI No.</th><th>Works description</th><th>Location</th><th>Inspection</th><th>Status</th>{extra && <th></th>}</tr></thead>
+    <tbody>{rows.map(r => <tr key={r.id + '-' + (r.sequence_no || '')}>
+      <td><Link className="link mono" to={`/rfis/${r.id}`}>{r.rfi_number}</Link>{r.revision_no ? <span className="muted"> R{r.revision_no}</span> : null}</td>
+      <td>{r.contractor_request || r.work_item}</td><td className="mono">{loc(r)}</td>
+      <td>{fmtDay(r.inspection_date)} {r.inspection_time || ''}{r.short_notice && <> <Status value="SHORT_NOTICE" label="Short notice" /></>}</td>
+      <td><Status value={r.current_disposition ? r.current_decision : r.workflow_status} />{r.overdue && <> <Status value="OVERDUE" /></>}</td>
+      {extra && <td>{extra(r)}</td>}
+    </tr>)}</tbody></table></div>;
 }
 
+const Kpi = ({ label, value, to }: { label: string; value: any; to?: string }) => {
+  const body = <div className="stat"><div className="muted" style={{ fontSize: 13 }}>{label}</div><div style={{ fontSize: 28, fontWeight: 700 }}>{value ?? 0}</div></div>;
+  return to ? <Link to={to} style={{ textDecoration: 'none', color: 'inherit' }}>{body}</Link> : body;
+};
+
 export default function Dashboard() {
-  const [d, setD] = useState<any>(null);
-  const [err, setErr] = useState('');
-  const u = JSON.parse(localStorage.getItem('user') || '{"name":"User"}');
-  useEffect(() => { api('/dashboard').then(setD).catch(e => setErr(e.message)); }, []);
+  const pid = currentProjectId();
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState('');
+  useEffect(() => { if (pid) api(`/dashboard?project_id=${pid}`).then(setD).catch(e => setErr(e.message)); }, [pid]);
+  if (!pid) return <div className="card"><h2>No project selected</h2><p className="muted">You are not a member of any project yet. Ask the System Administrator to add you to a project with the correct role.</p></div>;
+  if (err) return <div className="notice err">{err}</div>;
+  if (!d) return <div className="empty">Loading dashboard…</div>;
+  const wf = d.counts.by_workflow || {};
+  const role = d.role;
+  return <>
+    <div className="top"><div><h1>{d.project.code}</h1><p className="subtitle">{d.project.name} · You are signed in as <b>{roleLabel(role)}</b></p></div></div>
+    <div className="stats">
+      <Kpi label="RFIs in register" value={d.counts.total} to="/rfis" />
+      <Kpi label="Submitted – awaiting assignment" value={(wf.SUBMITTED || 0) + (wf.ACTIVATED || 0)} to="/rfis?workflow_status=SUBMITTED" />
+      <Kpi label="Under inspector review" value={wf.UNDER_REVIEW} to="/rfis?workflow_status=UNDER_REVIEW" />
+      <Kpi label={`Awaiting RE/${deputyLabel()} decision`} value={wf.AWAITING_DECISION} to="/rfis?workflow_status=AWAITING_DECISION" />
+    </div>
 
-  if (err) return <div className="notice">Could not load dashboard: {err}</div>;
-  if (!d) return <div className="empty">Loading site data…</div>;
+    {d.new_batches && <div className="card"><h3>New DOC_01 submissions</h3>{d.new_batches.length ? <div className="table-wrap"><table>
+      <thead><tr><th>Batch</th><th>Submitted</th><th>RFIs</th><th>Short notice</th><th>Received</th></tr></thead>
+      <tbody>{d.new_batches.map((b: any) => <tr key={b.id}><td><Link className="link" to={`/summaries/${b.id}`}>{b.summary_reference}</Link></td><td>{fmtDate(b.submitted_at)}</td><td>{b.rfi_count}</td>
+        <td>{b.short_notice ? <Status value="SHORT_NOTICE" label={`${b.short_notice} short notice`} /> : '—'}</td><td>{b.received_at ? fmtDate(b.received_at) : <span className="muted">not yet</span>}</td></tr>)}</tbody>
+    </table></div> : <div className="empty">No new submissions.</div>}</div>}
+    {d.awaiting_assignment && <div className="card"><h3>RFIs awaiting inspector assignment</h3><RfiTable rows={d.awaiting_assignment} empty="Nothing waiting for assignment." extra={r => <Link className="btn sm" to={`/rfis/${r.id}`}>Assign</Link>} /></div>}
+    {d.awaiting_decision && <div className="card"><h3>Awaiting your final decision</h3><RfiTable rows={d.awaiting_decision} empty="No RFIs awaiting a decision." extra={r => <Link className="btn sm success" to={`/rfis/${r.id}`}>Decide</Link>} /></div>}
+    {d.overdue_reviews?.length > 0 && <div className="card"><h3>Overdue inspector reviews</h3><RfiTable rows={d.overdue_reviews} empty="" /></div>}
+    {d.under_review && <div className="card"><h3>Active inspections</h3><RfiTable rows={d.under_review} empty="No active inspections." /></div>}
+    {d.pending_amendments > 0 && <div className="notice">{d.pending_amendments} amendment request(s) await your approval. Open the RFI to review them.</div>}
 
-  const total = Number(d.total) || 0;
-  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
-  const decided = MIX.reduce((s, m) => s + (Number(d[m.key]) || 0), 0);
-  const today = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    {d.my_active && <>
+      <div className="card"><h3>Your turn now</h3><RfiTable rows={d.my_active} empty="Nothing is waiting for your inspection." extra={r => <Link className="btn sm" to={`/rfis/${r.id}`}>Inspect</Link>} /></div>
+      <div className="card"><h3>Upcoming (waiting for earlier inspectors)</h3><RfiTable rows={d.my_upcoming} empty="No upcoming inspections." /></div>
+      <div className="card"><h3>Recently submitted by you</h3><RfiTable rows={d.my_completed} empty="No completed reviews yet." /></div>
+    </>}
 
-  const kpis = [
-    { l: 'Total RFIs', n: total, icon: 'clipboard', k: 'total', sub: 'All records in register' },
-    { l: 'Approved', n: d.approved, icon: 'checkCircle', k: 'success', sub: `${pct(d.approved)}% of total` },
-    { l: 'Rejected', n: d.rejected, icon: 'xCircle', k: 'danger', sub: `${pct(d.rejected)}% of total` },
-    { l: 'On Progress', n: d.on_progress, icon: 'clock', k: 'info', sub: `${pct(d.on_progress)}% of total` },
-    { l: 'Information Only', n: d.information_only, icon: 'info', k: 'neutral', sub: `${pct(d.information_only)}% of total` },
-  ];
-
-  return (
-    <>
-      <section className="dash-hero">
-        <div>
-          <span className="eyebrow">{today}</span>
-          <h1>{greeting()}, {String(u.name || '').split(' ')[0] || 'Engineer'}</h1>
-          <p>Track inspection requests from submission to final decision. Technical reviews, approvals, attachments and daily site progress are all in one place.</p>
-          <div className="toolbar">
-            <Link className="btn lg" to="/summaries"><Icon name="plus" />New RFI Summary</Link>
-            <Link className="btn secondary lg" to="/daily-progress"><Icon name="progress" />Daily Progress</Link>
-          </div>
-        </div>
-        <div className="hero-kpis">
-          <Link to="/rfis" className="hero-kpi"><div className="n">{d.under_review ?? 0}</div><div className="l">Under technical review</div></Link>
-          <Link to="/rfis" className="hero-kpi amber"><div className="n">{d.awaiting_decision ?? 0}</div><div className="l">Awaiting RE/ARE decision</div></Link>
-          <div className="hero-kpi wide"><span className="pulse" /><div><strong>System online</strong><div className="l" style={{ marginTop: 0 }}>API &amp; database connected · 24h overdue target</div></div></div>
-        </div>
-      </section>
-
-      <div className="stats">
-        {kpis.map(k => (
-          <div className={`stat kpi k-${k.k}`} key={k.l}>
-            <div className="row"><div className="ic"><Icon name={k.icon} size={20} /></div></div>
-            <div><div className="n">{k.n ?? 0}</div><div className="l">{k.l}</div></div>
-            <div className="pct">{k.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="dash-cols">
-        <div className="card" style={{ marginBottom: 0 }}>
-          <div className="top" style={{ marginBottom: 14 }}>
-            <div><h3 style={{ margin: 0 }}>Recent RFIs</h3><div className="muted" style={{ fontSize: 13 }}>Latest inspection requests across the project</div></div>
-            <Link to="/rfis" className="btn secondary">Open register <Icon name="arrow" size={16} /></Link>
-          </div>
-          {d.recent?.length ? (
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>RFI No.</th><th>Work item</th><th>Workflow</th><th>Decision</th></tr></thead>
-                <tbody>
-                  {d.recent.map((r: any) => (
-                    <tr key={r.id}>
-                      <td><Link className="link mono" to={`/rfis/${r.id}`}>{r.rfi_number}</Link></td>
-                      <td>{pretty(r.work_item)}</td>
-                      <td><Status value={r.workflow_status} /></td>
-                      <td><Status value={r.decision} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : <div className="empty">No RFIs yet. Create your first Summary to get started.</div>}
-        </div>
-
-        <div>
-          <div className="card">
-            <h3 style={{ marginBottom: 2 }}>Decision mix</h3>
-            <div className="muted" style={{ fontSize: 13 }}>{decided} decided RFIs by outcome</div>
-            <div className="mix-bar" role="img" aria-label={MIX.map(m => `${m.label} ${d[m.key] ?? 0}`).join(', ')}>
-              {decided > 0 && MIX.filter(m => Number(d[m.key]) > 0).map(m => (
-                <span key={m.key} style={{ flex: Number(d[m.key]), background: m.color }} title={`${m.label}: ${d[m.key]} (${Math.round((d[m.key] / decided) * 100)}%)`} />
-              ))}
-            </div>
-            <ul className="mix-legend">
-              {MIX.map(m => (
-                <li key={m.key}>
-                  <span className="sw" style={{ background: m.color }} />{m.label}
-                  <span className="v">{d[m.key] ?? 0}</span>
-                  <span className="p">{decided ? Math.round(((d[m.key] || 0) / decided) * 100) : 0}%</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="card" style={{ marginBottom: 0 }}>
-            <h3>Approval workflow</h3>
-            <ol className="flow">
-              {STEPS.map(([t, s], i) => (
-                <li key={t}><span className="no">{i + 1}</span><div><div className="t">{t}</div><div className="d">{s}</div></div></li>
-              ))}
-            </ol>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+    {d.drafts && <>
+      <div className="card"><div className="section-title"><h3>Draft / returned DOC_01 batches</h3><Link className="btn sm" to="/summaries">New DOC_01</Link></div>
+        {d.drafts.length ? <ul>{d.drafts.map((s: any) => <li key={s.id}><Link className="link" to={`/summaries/${s.id}`}>{s.summary_reference}</Link> <Status value={s.workflow_status} />{s.returned_reason && <span className="muted"> — returned: {s.returned_reason}</span>}</li>)}</ul> : <div className="empty">No drafts.</div>}</div>
+      <div className="card"><h3>Requires your action (not approved / partially approved)</h3><RfiTable rows={d.action_required} empty="Nothing requires action." extra={r => <Link className="btn sm warn" to={`/rfis/${r.id}`}>Open</Link>} /></div>
+    </>}
+    {d.recent_decisions && <div className="card"><h3>Recent final decisions</h3><RfiTable rows={d.recent_decisions} empty="No decisions recorded yet." /></div>}
+    {d.admin && <div className="card"><h3>Administration</h3><p>{d.admin.projects} projects · {d.admin.users} users · {d.admin.memberships} active members on this project.</p>
+      <div className="table-wrap"><table><thead><tr><th>When</th><th>Action</th><th>Record</th></tr></thead><tbody>{d.admin.recent_audit.map((a: any, i: number) => <tr key={i}><td>{fmtDate(a.created_at)}</td><td>{a.action}</td><td>{a.entity_type} #{a.entity_id}</td></tr>)}</tbody></table></div></div>}
+  </>;
 }

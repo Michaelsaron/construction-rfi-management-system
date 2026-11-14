@@ -14,3 +14,9 @@ DEMO_CREDENTIALS.txt
 client_source/
 backend/data/client_import/
 .DS_Store
+backups/
+.venv/
+.pytest_cache/
+
+# Unredacted client-identifying copies of docs
+docs/private/
