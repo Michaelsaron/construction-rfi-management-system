@@ -96,11 +96,13 @@ export default function RfiDetail() {
         <div><div className="k">Work item</div><div className="v">{r.work_item || '—'}</div></div>
         <div><div className="k">Location / chainage</div><div className="v mono">{loc(r)}</div></div>
         <div><div className="k">Inspection</div><div className="v">{fmtDay(r.inspection_date)} {r.inspection_time || r.inspection_time_text || ''}</div></div>
-        <div><div className="k">Requested</div><div className="v">{fmtDay(r.requested_date)} {r.requested_time || ''}</div></div>
+        <div><div className="k">Requested</div><div className="v">{r.requested_date_note ? <span className="muted" title="The historical workbook has no request date column. The stored value (a copy of the inspection date made by the original import) is kept unchanged but not shown as a request date.">{r.requested_date_note}</span> : <>{fmtDay(r.requested_date_display ?? r.requested_date)} {r.requested_time || ''}</>}</div></div>
         <div><div className="k">BOQ item</div><div className="v">{r.boq_item || '—'}</div></div>
         <div><div className="k">Material source</div><div className="v">{r.material_source || r.material_source_designation || '—'}{r.material_source_offset ? ` / ${r.material_source_offset}` : ''}</div></div>
         <div><div className="k">Order of inspection</div><div className="v">{['—', 'First', 'Second', 'Third'][r.inspection_order || 0]}</div></div>
-        <div><div className="k">Submitted by</div><div className="v">{d.summary?.submitted_by_name || d.created_by_name || '—'}{d.summary?.submitted_at && <> · {fmtDate(d.summary.submitted_at)}</>}</div></div>
+        {r.origin_label
+          ? <div><div className="k">Origin</div><div className="v">{r.origin_label}<div className="muted" style={{ fontSize: 12 }}>Record created by the import account ({d.created_by_name || 'system'}); the original submitter is not recorded.</div></div></div>
+          : <div><div className="k">Submitted by</div><div className="v">{d.summary?.submitted_by_name || d.created_by_name || '—'}{d.summary?.submitted_at && <> · {fmtDate(d.summary.submitted_at)}</>}</div></div>}
         <div><div className="k">Received by</div><div className="v">{d.received_by_name || '—'}{r.received_at && <> · {fmtDate(r.received_at)}</>}</div></div>
         {(r.approved_from || r.approved_to) && <div><div className="k">Approved section</div><div className="v mono">{r.approved_from} – {r.approved_to}</div></div>}
         <div><div className="k">Enclosure sheets</div><div className="v">{r.enclosure_sheets ?? '—'}</div></div>

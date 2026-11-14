@@ -95,12 +95,32 @@ def parse_categories(v):
 RFI_FIELDS = [c for c in Rfi.__table__.columns.keys()]
 
 
+LEGACY_REQUESTED_NOTE = 'Not recorded in the historical register'
+LEGACY_ORIGIN_LABEL = 'Imported from the historical DOC_02 register'
+
+
+def requested_date_is_import_copy(r: Rfi) -> bool:
+    """The historical workbook has no request date. The original importer copied Inspection_Date into
+    requested_date, so for imported rows that value is not a real request date. The stored value is kept
+    unchanged; only its presentation changes."""
+    return r.provenance == 'LEGACY_IMPORT' and (r.requested_date is None or r.requested_date == r.inspection_date)
+
+
+def display_requested_date(r: Rfi):
+    return None if requested_date_is_import_copy(r) else r.requested_date
+
+
 def rfi_dict(r: Rfi, extra: dict | None = None) -> dict:
     d = {k: getattr(r, k) for k in RFI_FIELDS}
     d['work_categories'] = parse_categories(r.work_categories)
     d['status_label'] = STATUS_LABELS.get(r.workflow_status, r.workflow_status)
     d['is_legacy'] = r.provenance == 'LEGACY_IMPORT' or (r.summary_id is None and r.workflow_status in ('COMPLETED', 'ARCHIVED'))
     d['rfi_status'] = r.legacy_rfi_status if d['is_legacy'] and r.legacy_rfi_status else None
+    # Presentation of historical rows (stored values are untouched; see requested_date_is_import_copy).
+    copy = requested_date_is_import_copy(r)
+    d['requested_date_display'] = None if copy else r.requested_date
+    d['requested_date_note'] = LEGACY_REQUESTED_NOTE if copy else None
+    d['origin_label'] = LEGACY_ORIGIN_LABEL if r.provenance == 'LEGACY_IMPORT' else None
     if extra:
         d.update(extra)
     return d

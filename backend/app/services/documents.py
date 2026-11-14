@@ -21,7 +21,7 @@ from sqlalchemy import select
 from app.config import settings as app_settings
 from app.models import Project, RfiSummary, ReviewerAssignment, Review, Decision, User, IssuedDocument, Rfi
 from app.project_settings import get_settings, disposition, DOC03_WORK_CATEGORIES
-from app.services.workflow import parse_categories, STATUS_LABELS
+from app.services.workflow import parse_categories, STATUS_LABELS, display_requested_date
 
 SS = getSampleStyleSheet()
 P7 = ParagraphStyle('p7', parent=SS['Normal'], fontSize=7, leading=8.5)
@@ -243,7 +243,7 @@ REGISTER_COLUMNS = [
     ('Legacy IPC File Path', lambda r, x: r.legacy_ipc_file_path),
     # system columns
     ('Revision', lambda r, x: r.revision_no), ('DOC_01 Batch', lambda r, x: x['batch']), ('Submitted At', lambda r, x: x['submitted_at']),
-    ('Requested Date', lambda r, x: r.requested_date), ('Requested Time', lambda r, x: r.requested_time), ('Material Source Offset', lambda r, x: r.material_source_offset),
+    ('Requested Date', lambda r, x: display_requested_date(r)), ('Requested Time', lambda r, x: r.requested_time), ('Material Source Offset', lambda r, x: r.material_source_offset),
     ('BOQ Item', lambda r, x: r.boq_item), ('Short Notice', lambda r, x: 'Yes' if r.short_notice else ('No' if r.short_notice is False else '')),
     ('Assigned Inspectors (sequence)', lambda r, x: x['inspectors']), ('Workflow Status', lambda r, x: STATUS_LABELS.get(r.workflow_status, r.workflow_status)),
     ('Decision', lambda r, x: r.current_decision), ('Decided By', lambda r, x: x['decided_by']), ('Decided At', lambda r, x: x['decided_at']),

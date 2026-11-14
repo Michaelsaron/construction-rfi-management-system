@@ -91,7 +91,7 @@ def register_query(db, user, f: RegisterFilter, for_export: bool = False):
     if f.inspector_id:
         s = s.where(Rfi.id.in_(select(ReviewerAssignment.rfi_id).where(ReviewerAssignment.user_id == f.inspector_id, ReviewerAssignment.status != 'REPLACED')))
     if f.submitted_by:
-        s = s.where(or_(Rfi.created_by == f.submitted_by, Rfi.summary_id.in_(select(RfiSummary.id).where(RfiSummary.submitted_by == f.submitted_by))))
+        s = s.where(or_(and_(Rfi.created_by == f.submitted_by, or_(Rfi.provenance.is_(None), Rfi.provenance != 'LEGACY_IMPORT')), Rfi.summary_id.in_(select(RfiSummary.id).where(RfiSummary.submitted_by == f.submitted_by))))
     if f.latest_only:
         r2 = Rfi.__table__.alias('r2')
         s = s.where(~select(r2.c.id).where(r2.c.project_id == Rfi.project_id, r2.c.rfi_number == Rfi.rfi_number, r2.c.revision_no > Rfi.revision_no).exists())
