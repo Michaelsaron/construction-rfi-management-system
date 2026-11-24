@@ -2,7 +2,7 @@
 // - Page navigations: network-first (so new versions always load), cached shell as offline fallback.
 // - Built static assets / icons / fonts: stale-while-revalidate.
 // - API data is NEVER cached here (offline writes are handled by the IndexedDB queue in the app).
-const VERSION = 'v5';
+const VERSION = 'v6';
 const STATIC = `rfi-static-${VERSION}`;
 const RUNTIME = `rfi-runtime-${VERSION}`;
 const SHELL = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'];

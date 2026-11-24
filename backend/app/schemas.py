@@ -15,7 +15,7 @@ def _time(v):
 
 
 class LoginIn(BaseModel): email: EmailStr; password: str
-class Token(BaseModel): access_token: str; token_type: str = 'bearer'
+class Token(BaseModel): access_token: str | None = None; token_type: str = 'bearer'
 
 
 class MembershipIn(BaseModel):

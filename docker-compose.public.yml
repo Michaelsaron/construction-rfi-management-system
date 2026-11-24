@@ -25,6 +25,9 @@ services:
     build: ./backend
     restart: unless-stopped
     env_file: [.env]
+    environment:
+      TRUST_PROXY_HEADERS: "true"   # backend is reachable only through nginx in this stack
+      COOKIE_SECURE: "true"         # the public link is HTTPS (Cloudflare tunnel)
     depends_on:
       db: {condition: service_healthy}
     volumes: [./backend/uploads:/app/uploads]

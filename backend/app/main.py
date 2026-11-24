@@ -9,7 +9,7 @@ from app.security import hash_password
 from app.services.notify import create_overdue_notifications
 from app.routers import auth, users, projects, master_data, summaries, rfis, attachments, daily_progress, audit, reports, system
 
-VERSION = '5.0.0-srs'
+VERSION = '5.1.0-srs'
 app = FastAPI(title=settings.app_name, version=VERSION)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_origin], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
 
@@ -20,6 +20,7 @@ async def security_headers(request, call_next):
     resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
     resp.headers.setdefault('X-Frame-Options', 'DENY')
     resp.headers.setdefault('Referrer-Policy', 'same-origin')
+    resp.headers.setdefault('Cache-Control', 'no-store')  # API data must not be kept by browsers or proxies
     return resp
 
 
@@ -50,8 +51,30 @@ async def overdue_loop():
         finally: db.close()
 
 
+# Values published in .env.example. They must never protect a production system.
+EXAMPLE_SECRETS = ('ChangeMe_Rfi_123!', 'ChangeMe_Root_123!', 'Admin123!', 'change-this', 'replace-with')
+
+
+def security_check():
+    """Refuse to start in production with a weak JWT secret; warn about example values that must be rotated."""
+    if settings.environment != 'production':
+        return []
+    if len(settings.jwt_secret) < 32 or any(x in settings.jwt_secret for x in EXAMPLE_SECRETS):
+        raise RuntimeError('JWT_SECRET must be a random value of at least 32 characters in production')
+    warnings = []
+    import os
+    for name in ('MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'DATABASE_URL', 'ADMIN_PASSWORD'):
+        if any(x in (os.environ.get(name) or '') for x in EXAMPLE_SECRETS):
+            warnings.append(name)
+    if warnings:
+        print('[SECURITY-WARNING] example values from .env.example are still in use for: ' + ', '.join(warnings)
+              + '. Rotate them (docs/deployment/SECURITY.md).', flush=True)
+    return warnings
+
+
 @app.on_event('startup')
 def startup():
+    security_check()
     schema_check()  # refuse to start (and create nothing) on an unmigrated existing database
     Base.metadata.create_all(bind=engine)  # creates only missing NEW tables on a migrated / fresh database
     db = SessionLocal()

@@ -12,7 +12,8 @@ URL = os.environ.get('TEST_DATABASE_URL', '')
 if not URL or not URL.rsplit('/', 1)[-1].split('?')[0].endswith('_test'):
     raise SystemExit('Refusing to run: TEST_DATABASE_URL must point to a database whose name ends in "_test".')
 os.environ.update(DATABASE_URL=URL, JWT_SECRET='test-secret-' + uuid.uuid4().hex, ENVIRONMENT='test', ADMIN_EMAIL='admin@example.com',
-                  ADMIN_PASSWORD='Admin123!Test', UPLOAD_DIR=tempfile.mkdtemp(prefix='rfi_test_uploads_'), SMTP_HOST='')
+                  ADMIN_PASSWORD='Admin123!Test', UPLOAD_DIR=tempfile.mkdtemp(prefix='rfi_test_uploads_'), SMTP_HOST='',
+                  LOGIN_IP_MAX_ATTEMPTS='100000')  # the fixtures sign in many users from one test IP
 
 from fastapi.testclient import TestClient  # noqa: E402
 from app.database import Base, engine, SessionLocal  # noqa: E402
@@ -46,9 +47,21 @@ class Api:
     def delete(self, path, **kw): return self.c.delete(path, headers=self.h(), **kw)
 
 
-def login(client, email, pw=PW):
-    r = client.post('/auth/login', json={'email': email, 'password': pw})
+def clear_must_change(email):
+    """Accounts created by an admin start with a temporary password, which the server now enforces.
+    Test users skip the change step (it is covered by test_security.py)."""
+    from app.database import SessionLocal as S
+    from app.models import User as U
+    with S() as db:
+        db.query(U).filter(U.email == email.lower()).update({'must_change_password': False}); db.commit()
+
+
+def login(client, email, pw=PW, keep_temporary_password=False):
+    if not keep_temporary_password:
+        clear_must_change(email)
+    r = client.post('/auth/login', json={'email': email, 'password': pw}, headers={'X-Auth-Mode': 'bearer'})
     assert r.status_code == 200, r.text
+    client.cookies.clear()  # tests authenticate with Bearer; never let one user's cookie leak into another's request
     return Api(client, r.json()['access_token'])
 
 

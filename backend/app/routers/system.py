@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Rfi, ReviewerRule, Notification, Project, ProjectUser, RfiSummary, ReviewerAssignment, AuditLog, RfiAmendment
 from app.schemas import ReviewerRuleCreate, ChangePasswordIn
-from app.security import current_user, verify_password, hash_password
+from app.security import current_user, verify_password, hash_password, set_session_cookies, create_access_token
 from app import authz
 from app.project_settings import get_settings
 from app.services.audit import log
@@ -29,13 +29,16 @@ def me(db: Session = Depends(get_db), u: User = Depends(current_user)):
 
 
 @router.post('/me/password')
-def change_password(d: ChangePasswordIn, db: Session = Depends(get_db), u: User = Depends(current_user)):
+def change_password(d: ChangePasswordIn, request: Request, response: Response, db: Session = Depends(get_db), u: User = Depends(current_user)):
     if not verify_password(d.current_password, u.password_hash): raise HTTPException(400, 'Current password is incorrect')
     if len(d.new_password) < 10: raise HTTPException(400, 'Password must be at least 10 characters')
     if d.new_password == d.current_password: raise HTTPException(400, 'New password must be different from the current password')
     u.password_hash = hash_password(d.new_password); u.must_change_password = False
     log(db, u.id, 'USER', u.id, 'CHANGE_PASSWORD'); db.commit()
-    return {'ok': True}
+    # The password fingerprint in every older token no longer matches: other sessions end, this one is renewed.
+    token = create_access_token(u)
+    set_session_cookies(response, token)
+    return {'ok': True, 'access_token': token} if request.headers.get('X-Auth-Mode', '').lower() == 'bearer' else {'ok': True}
 
 
 def brief(rows):

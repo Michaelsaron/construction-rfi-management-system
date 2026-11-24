@@ -19,6 +19,9 @@ services:
     build: ./backend
     restart: always
     env_file: .env
+    environment:
+      TRUST_PROXY_HEADERS: "true"
+      COOKIE_SECURE: "true"
     depends_on:
       db:
         condition: service_healthy

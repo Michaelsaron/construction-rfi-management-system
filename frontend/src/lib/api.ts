@@ -2,8 +2,19 @@ import { enqueueRequest, syncQueue } from './offline';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 export const API_BASE = API;
 
-export const token = () => localStorage.getItem('token');
-export const setToken = (v: string) => localStorage.setItem('token', v);
+// The session token lives in an HttpOnly cookie that page scripts cannot read (set by /auth/login).
+// localStorage keeps only the non-secret profile used to shape the UI; the server re-checks every request.
+try { localStorage.removeItem('token'); } catch { /* tokens from releases before 5.1 */ }
+export const isAuthed = () => !!getUser().id;
+/** Kept for older components. */
+export const token = () => (isAuthed() ? 'cookie' : null);
+const csrf = () => document.cookie.split('; ').find(c => c.startsWith('rfi_csrf='))?.slice(9) || '';
+const UNSAFE = ['POST', 'PUT', 'PATCH', 'DELETE'];
+export function authHeaders(method = 'GET', h: Headers | Record<string, string> = new Headers()) {
+  const set = (k: string, v: string) => (h instanceof Headers ? h.set(k, v) : (h[k] = v));
+  if (UNSAFE.includes(method.toUpperCase()) && csrf()) set('X-CSRF-Token', decodeURIComponent(csrf()));
+  return h;
+}
 export const setUser = (u: any) => localStorage.setItem('user', JSON.stringify(u));
 export const getUser = (): any => { try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; } };
 
@@ -43,10 +54,14 @@ export const isOffice = (r = projectRole()) => !!r && OFFICE.includes(r);
 export const isManager = () => isMgmt();
 export const deputyLabel = () => (getUser().memberships || []).find((m: any) => m.project_id === currentProjectId())?.deputy_label || 'DRE';
 
-export const logout = () => {
+function clearLocal() {
   const theme = localStorage.getItem('theme');
   ['token', 'user', 'project_id'].forEach(k => localStorage.removeItem(k));
   if (theme) localStorage.setItem('theme', theme);
+}
+export const logout = async () => {
+  try { await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }); } catch { /* offline: cookie expires on its own */ }
+  clearLocal();
   location.href = '/login';
 };
 export const requestId = () => (crypto as any).randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -60,10 +75,10 @@ function message(text: string) {
 export async function api(path: string, options: RequestInit = {}) {
   const h = new Headers(options.headers || {});
   if (!(options.body instanceof FormData)) h.set('Content-Type', 'application/json');
-  if (token()) h.set('Authorization', `Bearer ${token()}`);
+  authHeaders(options.method || 'GET', h);
   let r: Response;
-  try { r = await fetch(`${API}${path}`, { ...options, headers: h }); } catch { throw new Error('Cannot reach the server. Check your connection and try again.'); }
-  if (r.status === 401 && token() && !path.startsWith('/auth/')) { logout(); throw new Error('Session expired. Please sign in again.'); }
+  try { r = await fetch(`${API}${path}`, { ...options, headers: h, credentials: 'include' }); } catch { throw new Error('Cannot reach the server. Check your connection and try again.'); }
+  if (r.status === 401 && isAuthed() && !path.startsWith('/auth/')) { clearLocal(); location.href = '/login'; throw new Error('Session expired. Please sign in again.'); }
   if (!r.ok) throw new Error(message(await r.text()) || `Request failed (${r.status})`);
   const ct = r.headers.get('content-type') || '';
   return ct.includes('application/json') ? r.json() : r.blob();
@@ -80,10 +95,10 @@ export async function apiOrQueue(path: string, method: string, payload: any, isF
   }
   return api(path, { method, body: isForm ? payload : JSON.stringify(payload) });
 }
-export async function syncPending() { return syncQueue(API, token()); }
+export async function syncPending() { return syncQueue(API, authHeaders); }
 export async function download(path: string, filename?: string) {
   try {
-    const r = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${token() || ''}` } });
+    const r = await fetch(`${API}${path}`, { credentials: 'include' });
     if (!r.ok) throw new Error(message(await r.text()));
     const b = await r.blob(), u = URL.createObjectURL(b), a = document.createElement('a');
     a.href = u; a.download = filename || 'download'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);

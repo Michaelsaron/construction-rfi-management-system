@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, setToken, setUser } from '../lib/api';
+import { api, setUser } from '../lib/api';
 import { BrandMark, SiteScene } from '../components/Brand';
 import Icon from '../components/Icon';
 
@@ -13,8 +13,7 @@ export default function Login() {
   async function go(e: any) {
     e.preventDefault(); setBusy(true); setMsg('');
     try {
-      const r = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-      setToken(r.access_token);
+      await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });  // sets the HttpOnly session cookie
       const me = await api('/me');
       setUser(me);
       location.href = me.must_change_password ? '/change-password' : '/';
