@@ -7,9 +7,9 @@ from app.database import Base, engine, SessionLocal
 from app.models import User, Project, MasterData
 from app.security import hash_password
 from app.services.notify import create_overdue_notifications
-from app.routers import auth, users, projects, master_data, summaries, rfis, attachments, daily_progress, audit, reports, system
+from app.routers import auth, users, projects, master_data, summaries, rfis, attachments, daily_progress, audit, reports, system, evidence, records, admin
 
-VERSION = '5.1.0-srs'
+VERSION = '6.0.0-ui'
 app = FastAPI(title=settings.app_name, version=VERSION)
 app.add_middleware(CORSMiddleware, allow_origins=[settings.frontend_origin], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
 
@@ -26,8 +26,11 @@ async def security_headers(request, call_next):
 
 # Columns added by scripts/migrate_srs_v5.py. If they are missing the database has not been migrated,
 # and this release must not run against it (create_all() never adds columns to existing tables).
-REQUIRED_COLUMNS = {'rfis': {'inspection_time', 'provenance', 'current_disposition'}, 'reviewer_assignments': {'sequence_no'},
-                    'project_users': {'role', 'status'}, 'decisions': {'disposition_code'}, 'audit_logs': {'project_id'}}
+REQUIRED_COLUMNS = {'rfis': {'inspection_time', 'provenance', 'current_disposition'}, 'reviewer_assignments': {'sequence_no', 'draft_comment'},
+                    'project_users': {'role', 'status'}, 'decisions': {'disposition_code', 'designation_snapshot'}, 'audit_logs': {'project_id'},
+                    # release 6.0.0-ui (scripts/migrate_ui_v1.py)
+                    'attachments': {'attachment_kind', 'project_id', 'sha256', 'upload_token', 'locked_at', 'management_remark_id', 'assignment_id'},
+                    'reviews': {'reviewer_name_snapshot', 'attachment_count'}, 'rfi_amendments': {'amendment_type'}}
 
 
 def schema_check():
@@ -38,8 +41,8 @@ def schema_check():
             have = {c['name'] for c in insp.get_columns(table)}
             missing += [f'{table}.{c}' for c in cols - have]
     if missing:
-        raise RuntimeError('Database schema is older than this release. Run `python -m scripts.migrate_srs_v5 --apply` '
-                           'after taking a verified backup. Missing: ' + ', '.join(missing))
+        raise RuntimeError('Database schema is older than this release. Run `python -m scripts.migrate_srs_v5 --apply` and then '
+                           '`python -m scripts.migrate_ui_v1 --apply` after taking a verified backup. Missing: ' + ', '.join(missing))
 
 
 async def overdue_loop():
@@ -107,5 +110,6 @@ def startup():
 def health(): return {'status': 'ok', 'app': settings.app_name, 'version': VERSION}
 
 
-for r in [auth.router, users.router, projects.router, master_data.router, summaries.router, rfis.router, attachments.router, daily_progress.router, audit.router, reports.router, system.router]:
+for r in [auth.router, users.router, projects.router, master_data.router, summaries.router, records.router, rfis.router, attachments.router, evidence.router,
+          admin.router, daily_progress.router, audit.router, reports.router, system.router]:
     app.include_router(r)

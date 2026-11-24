@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import RfiSummary, Rfi, User, Project, RfiStatusHistory, ReviewerAssignment
+from app.models import RfiSummary, Rfi, User, Project, RfiStatusHistory, ReviewerAssignment, Attachment
 from app.schemas import SummaryCreate, SummarySubmit, ReturnBatch
 from app.security import current_user
 from app import authz
@@ -68,7 +68,9 @@ def one(sid: int, db: Session = Depends(get_db), u: User = Depends(current_user)
     return {'summary': sdict(db, s), 'rfis': [rfi_dict(r, {'missing': validate_rfi_for_submission(r)}) for r in rows], 'my_role': role,
             'project': {'id': p.id, 'code': p.code, 'name': p.name},
             'notice_policy': get_settings(p)['notice_policy'], 'notice_hours': get_settings(p)['notice_hours'],
-            'permissions': {'edit': editable, 'submit': editable and bool(rows),
+            'project_detail': {'contract_number': p.contract_number, 'employer': p.employer, 'consultant': p.consultant, 'contractor': p.contractor},
+            'my_category': authz.category(role),
+            'permissions': {'edit': editable, 'submit': editable and bool(rows), 'management_remark': role in authz.MANAGEMENT and s.workflow_status == 'SUBMITTED',
                             'return': role in authz.MANAGEMENT and s.workflow_status == 'SUBMITTED' and not assigned,
                             'receive': (role in authz.MANAGEMENT or role == 'SECRETARY') and s.workflow_status == 'SUBMITTED' and not s.received_at}}
 
@@ -125,6 +127,10 @@ def submit(sid: int, body: SummarySubmit | None = None, db: Session = Depends(ge
             r.workflow_status = 'SUBMITTED'; r.version += 1
             db.add(RfiStatusHistory(rfi_id=r.id, workflow_status='SUBMITTED', changed_by=u.id, reason=f'Submitted with DOC_01 {s.summary_reference}' + (' (short notice)' if r.short_notice else '')))
     s.workflow_status = 'SUBMITTED'; s.submitted_at = datetime.utcnow(); s.returned_reason = None
+    # DOC_01 enclosures are locked with the submission (version preservation)
+    from app.services import evidence as ev
+    from sqlalchemy import or_
+    ev.lock(db, or_(Attachment.summary_id == s.id, Attachment.rfi_id.in_([r.id for r in children] or [-1])), Attachment.attachment_kind == 'RECORD', when=s.submitted_at)
     first = min((inspection_datetime(r.inspection_date, r.inspection_time) for r in children if r.inspection_date), default=None)
     msg = (f'DOC_01 {s.summary_reference} from {u.full_name}: {len(children)} RFI(s), first inspection {first:%d/%m/%Y %H:%M}.' if first else f'DOC_01 {s.summary_reference}: {len(children)} RFI(s).')
     if short: msg += f' {len(short)} RFI(s) are SHORT NOTICE (< {st["notice_hours"]} h).'
@@ -161,8 +167,10 @@ def ret(sid: int, d: ReturnBatch, db: Session = Depends(get_db), u: User = Depen
         if r.workflow_status == 'SUBMITTED':
             r.workflow_status = 'DRAFT'; r.version += 1
             db.add(RfiStatusHistory(rfi_id=r.id, workflow_status='DRAFT', changed_by=u.id, reason=f'Batch returned: {d.reason}'))
+    from app.routers.evidence import submit_remark
+    remark = submit_remark(db, u, d.management_remark_id, stage='REASSIGNMENT_RETURN', summary=s, body=d.reason.strip())
     s.workflow_status = 'RETURNED'; s.returned_reason = d.reason.strip()
     notify(db, s.submitted_by, 'DOC_01 returned', f'DOC_01 {s.summary_reference} was returned for correction: {d.reason}', 'RFI_SUMMARY', s.id, s.project_id)
-    log(db, u.id, 'RFI_SUMMARY', s.id, 'RETURN', d.reason, project_id=s.project_id)
+    log(db, u.id, 'RFI_SUMMARY', s.id, 'RETURN', d.reason, project_id=s.project_id, after={'management_remark_id': remark.id if remark else None})
     db.commit()
     return sdict(db, s)

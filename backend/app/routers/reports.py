@@ -20,7 +20,7 @@ from app.security import current_user
 from app import authz
 from app.project_settings import get_settings
 from app.services.audit import log
-from app.services.register import RegisterFilter, register_query
+from app.services.register import RegisterFilter, register_query, hidden_policy
 from app.services import documents
 from app.routers.rfis import filter_params
 
@@ -52,19 +52,20 @@ def export_rows(db, u, f):
 
 @router.get('/register.xlsx')
 @router.get('/rfi-register.xlsx')
-def register_xlsx(f: RegisterFilter = Depends(filter_params), db: Session = Depends(get_db), u: User = Depends(current_user)):
+def register_xlsx(f: RegisterFilter = Depends(filter_params), show_hidden: bool = False, db: Session = Depends(get_db), u: User = Depends(current_user)):
     rows = export_rows(db, u, f)
-    data = documents.register_xlsx(db, rows, project_label(db, f), f.active(), u)
+    data = documents.register_xlsx(db, rows, project_label(db, f), f.active(), u, hidden_allowed=hidden_policy(db, u), show_hidden=show_hidden)
     log(db, u.id, 'REPORT', f.project_id or 0, 'EXPORT_REGISTER_XLSX', f'{len(rows)} rows; filters={f.active()}', project_id=f.project_id, commit=True)
     return file_response(data, XLSX, f'DOC02_register_{datetime.utcnow():%Y%m%d_%H%M}.xlsx')
 
 
 @router.get('/register.pdf')
-def register_pdf(f: RegisterFilter = Depends(filter_params), db: Session = Depends(get_db), u: User = Depends(current_user)):
+def register_pdf(f: RegisterFilter = Depends(filter_params), columns: str | None = None, db: Session = Depends(get_db), u: User = Depends(current_user)):
     rows = export_rows(db, u, f)
     if len(rows) > 5000:
         raise HTTPException(413, f'{len(rows)} records match. Narrow the filters to 5,000 or fewer for a PDF, or use the Excel export.')
-    data = documents.register_pdf(db, rows, project_label(db, f), f.active(), u)
+    cols = [c.strip() for c in columns.split(',')] if columns else None
+    data = documents.register_pdf(db, rows, project_label(db, f), f.active(), u, columns=cols, hidden_allowed=hidden_policy(db, u))
     log(db, u.id, 'REPORT', f.project_id or 0, 'EXPORT_REGISTER_PDF', f'{len(rows)} rows; filters={f.active()}', project_id=f.project_id, commit=True)
     return file_response(data, 'application/pdf', f'DOC02_register_{datetime.utcnow():%Y%m%d_%H%M}.pdf')
 

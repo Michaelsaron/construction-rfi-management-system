@@ -19,9 +19,9 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from sqlalchemy import select
 from app.config import settings as app_settings
-from app.models import Project, RfiSummary, ReviewerAssignment, Review, Decision, User, IssuedDocument, Rfi
+from app.models import Project, RfiSummary, ReviewerAssignment, Review, Decision, User, IssuedDocument, Rfi, Attachment, ManagementRemark
 from app.project_settings import get_settings, disposition, DOC03_WORK_CATEGORIES
-from app.services.workflow import parse_categories, STATUS_LABELS, display_requested_date
+from app.services.workflow import parse_categories, STATUS_LABELS, display_requested_date, LEGACY_FILE_UNAVAILABLE
 
 SS = getSampleStyleSheet()
 P7 = ParagraphStyle('p7', parent=SS['Normal'], fontSize=7, leading=8.5)
@@ -174,10 +174,53 @@ def build_doc03_pdf(db, r: Rfi) -> bytes:
     t = Table([[Paragraph('<b>Note</b><br/>' + notes, P7), Paragraph(dist, P7)]], colWidths=[W * .7, W * .3]); t.setStyle(TableStyle(GRID)); story.append(t)
     story.append(Spacer(1, 1.5 * mm))
     story.append(Paragraph(f'Received by contractor: ______________________ &nbsp; Date: __________ &nbsp; Signature: __________', P8))
+    story += evidence_index(db, r, W)
     status = STATUS_LABELS.get(r.workflow_status, r.workflow_status)
     footer = f'{project.code} | DOC_03 RFI {r.rfi_number} Rev {r.revision_no} | Status: {status} | Generated {datetime.utcnow():%d/%m/%Y %H:%M} UTC by RFIMS'
     doc.build(story, canvasmaker=canvas_with(footer))
     return out.getvalue()
+
+
+STAGE_TEXT = {'DOC01_REVIEW': 'DOC_01 review', 'ASSIGNMENT': 'Inspector assignment', 'SEQUENCE_CHANGE': 'Sequence change',
+              'REASSIGNMENT_RETURN': 'Reassignment / return', 'FINAL_DISPOSITION': 'Final disposition', 'DOC01_ENCLOSURE': 'DOC_01 enclosure'}
+
+
+def stage_text(a) -> str:
+    st = a.workflow_stage or ''
+    if st.startswith('INSPECTOR_REVIEW#'): return f'Inspector review #{st.split("#", 1)[1]}'
+    return STAGE_TEXT.get(st, st.replace('_', ' ').title() or 'Record')
+
+
+def evidence_index(db, r: Rfi, W) -> list:
+    """Management remarks and the attachment index appended to the DOC_03 (UI design s.17.1). Only submitted (locked) items."""
+    from sqlalchemy import or_, and_, func
+    remarks = list(db.scalars(select(ManagementRemark).where(ManagementRemark.status == 'SUBMITTED', or_(ManagementRemark.rfi_id == r.id,
+                   and_(ManagementRemark.rfi_id.is_(None), ManagementRemark.summary_id == r.summary_id) if r.summary_id else ManagementRemark.id == -1))
+                   .order_by(ManagementRemark.submitted_at)))
+    files = list(db.scalars(select(Attachment).where(Attachment.is_active == True, Attachment.removed_at.is_(None), Attachment.locked_at.is_not(None),
+                 func.coalesce(Attachment.upload_status, 'COMPLETE') == 'COMPLETE', Attachment.superseded_at.is_(None),
+                 or_(Attachment.rfi_id == r.id, and_(Attachment.entity_type == 'rfi', Attachment.entity_id == r.id),
+                     and_(Attachment.summary_id == r.summary_id, Attachment.rfi_id.is_(None), Attachment.attachment_kind == 'MANAGEMENT_REMARK') if r.summary_id else Attachment.id == -1))
+                 .order_by(Attachment.uploaded_at, Attachment.id)))
+    if not remarks and not files:
+        return []
+    nm = {u.id: u.full_name for u in db.scalars(select(User).where(User.id.in_({x.author_id for x in remarks} | {f.uploaded_by for f in files} or {-1})))}
+    out = [Spacer(1, 3 * mm)]
+    if remarks:
+        rows = [[p('Management remark', P8B), p('By', P8B), p('Date', P8B), p('Remark', P8B)]]
+        for m in remarks:
+            rows.append([p(STAGE_TEXT.get(m.stage, m.stage), P7), p(f'{m.author_name_snapshot or nm.get(m.author_id, "")} ({m.author_role})', P7), p(fmt_dt(m.submitted_at), P7), p(m.body, P7)])
+        t = Table(rows, colWidths=[W * .17, W * .2, W * .13, W * .5], repeatRows=1)
+        t.setStyle(TableStyle(GRID + [('BACKGROUND', (0, 0), (-1, 0), SHADE)])); out += [t, Spacer(1, 2 * mm)]
+    if files:
+        rows = [[p('#', P8B), p('Attachment index - stage', P8B), p('File', P8B), p('Added by', P8B), p('Uploaded', P8B), p('SHA-256', P8B)]]
+        for i, f in enumerate(files, 1):
+            rows.append([p(i, P7), p(stage_text(f), P7), p(f'{f.original_name} ({max(1, round((f.size_bytes or 0) / 1024))} KB)' + (f' v{f.version_no}' if (f.version_no or 1) > 1 else ''), P7),
+                         p(f'{nm.get(f.uploaded_by, "")} ({f.author_role or "-"})', P7), p(fmt_dt(f.uploaded_at), P7), p((f.sha256 or 'not recorded')[:32], P7)])
+        t = Table(rows, colWidths=[W * .04, W * .17, W * .3, W * .19, W * .12, W * .18], repeatRows=1)
+        t.setStyle(TableStyle(GRID + [('BACKGROUND', (0, 0), (-1, 0), SHADE)])); out.append(t)
+        out.append(Paragraph('Original files are kept in RFIMS and are released according to project and record permissions. The SHA-256 value identifies each file exactly.', P7))
+    return out
 
 
 def issue_doc03(db, r: Rfi, user: User):
@@ -239,8 +282,8 @@ REGISTER_COLUMNS = [
     ('Inspection_Date', lambda r, x: r.inspection_date), ('Inspection_Time', lambda r, x: r.inspection_time or r.inspection_time_text), ('Work_Status', lambda r, x: r.work_status),
     ('RFI_Status', lambda r, x: x['rfi_status']), ('Approved_From', lambda r, x: r.approved_from), ('Approved_To', lambda r, x: r.approved_to),
     ('Application Rate', lambda r, x: r.application_rate), ('Quantity G-40', lambda r, x: r.quantity_g40), ('All Quantity [& G-60]', lambda r, x: r.all_quantity),
-    ('Remark', lambda r, x: r.remarks), ('Legacy File Path', lambda r, x: r.legacy_file_path), ('RFI Included under IPC', lambda r, x: r.legacy_ipc_included),
-    ('Legacy IPC File Path', lambda r, x: r.legacy_ipc_file_path),
+    ('Remark', lambda r, x: r.remarks), ('File_Path', lambda r, x: LEGACY_FILE_UNAVAILABLE if r.legacy_file_path else x.get('doc_link', '')),
+    ('RFI Included under IPC', lambda r, x: r.legacy_ipc_included), ('IPC File_Path', lambda r, x: LEGACY_FILE_UNAVAILABLE if r.legacy_ipc_file_path else ''),
     # system columns
     ('Revision', lambda r, x: r.revision_no), ('DOC_01 Batch', lambda r, x: x['batch']), ('Submitted At', lambda r, x: x['submitted_at']),
     ('Requested Date', lambda r, x: display_requested_date(r)), ('Requested Time', lambda r, x: r.requested_time), ('Material Source Offset', lambda r, x: r.material_source_offset),
@@ -272,16 +315,24 @@ def register_extras(db, rows):
         b = batches.get(r.summary_id)
         out[r.id] = {'rfi_status': (r.legacy_rfi_status if legacy else (disp['label'] if disp else r.current_decision)) or '',
                      'batch': b.summary_reference if b else '', 'submitted_at': b.submitted_at if b else None,
-                     'inspectors': '; '.join(ins.get(r.id, [])), 'decided_by': nm.get(d.decided_by) if d else '', 'decided_at': d.decided_at if d else None}
+                     'inspectors': '; '.join(ins.get(r.id, [])), 'decided_by': (d.decided_by_name_snapshot or nm.get(d.decided_by)) if d else '', 'decided_at': d.decided_at if d else None,
+                     'doc_link': f'Completed DOC_03 in RFIMS (record {r.id})' if (r.workflow_status == 'COMPLETED' and not legacy) else ''}
     return out
 
 
-def register_xlsx(db, rows, project_label: str, filters: dict, user: User) -> bytes:
+# Workbook columns I:M and S are hidden in the client's workbook. Their values are kept; who may see them is a project setting (UD-06).
+HIDDEN_HEADERS = {'Fill Layer/CheckDam/Pww', 'Material_Source_or_Desitination Type', 'Material_Source_Cut_Sec_[Sta. From-Sta. To]',
+                  'Material_Source_Designation', 'Material_Destination/Disposal_Designation', 'Work_Status'}
+
+
+def register_xlsx(db, rows, project_label: str, filters: dict, user: User, hidden_allowed=lambda r: True, show_hidden: bool = False) -> bytes:
     wb = Workbook(); ws = wb.active; ws.title = 'RFI'
     ncol = len(REGISTER_COLUMNS)
     ws.cell(1, 1, f'PROJECT:- {project_label}').font = Font(bold=True, size=12)
     ws.cell(2, 1, f'DOC_02 Main RFI Record Sheet - exported {datetime.utcnow():%d/%m/%Y %H:%M} UTC by {user.full_name} - {len(rows)} record(s)')
-    ws.cell(3, 1, ('Filters: ' + '; '.join(f'{k}={v}' for k, v in filters.items())) if filters else 'Filters: none (all authorised records)')
+    restricted = any(not hidden_allowed(r) for r in rows)
+    ws.cell(3, 1, (('Filters: ' + '; '.join(f'{k}={v}' for k, v in filters.items())) if filters else 'Filters: none (all authorised records)')
+            + (' | Workbook columns I:M and S are restricted for your role and left blank.' if restricted else ''))
     hdr_row = 4
     fill = PatternFill('solid', fgColor='DDEBF7'); thin = Side(style='thin', color='9FB3C8')
     for i, (h, _) in enumerate(REGISTER_COLUMNS, 1):
@@ -289,26 +340,47 @@ def register_xlsx(db, rows, project_label: str, filters: dict, user: User) -> by
     ex = register_extras(db, rows)
     for ri, r in enumerate(rows, hdr_row + 1):
         x = ex[r.id]
-        for ci, (_, fn) in enumerate(REGISTER_COLUMNS, 1):
-            v = fn(r, x)
+        ok = hidden_allowed(r)
+        for ci, (h, fn) in enumerate(REGISTER_COLUMNS, 1):
+            v = fn(r, x) if (ok or h not in HIDDEN_HEADERS) else None
             c = ws.cell(ri, ci, v)
             if hasattr(v, 'year') and hasattr(v, 'hour'): c.number_format = 'dd/mm/yyyy hh:mm'
             elif hasattr(v, 'year'): c.number_format = 'dd/mm/yyyy'
-    widths = {'Contractor_Request': 48, 'Description': 34, 'Remark': 30, 'Assigned Inspectors (sequence)': 40, 'Legacy File Path': 30, 'Legacy IPC File Path': 30}
+    widths = {'Contractor_Request': 48, 'Description': 34, 'Remark': 30, 'Assigned Inspectors (sequence)': 40, 'File_Path': 34, 'IPC File_Path': 34}
     for i, (h, _) in enumerate(REGISTER_COLUMNS, 1):
         ws.column_dimensions[get_column_letter(i)].width = widths.get(h, max(11, min(24, len(h) + 2)))
+        if h in HIDDEN_HEADERS and not show_hidden:
+            ws.column_dimensions[get_column_letter(i)].hidden = True  # as in the client's workbook; values stay in the file
     ws.row_dimensions[hdr_row].height = 32
     ws.freeze_panes = ws.cell(hdr_row + 1, 1)
     ws.auto_filter.ref = f'A{hdr_row}:{get_column_letter(ncol)}{max(hdr_row, hdr_row + len(rows))}'
     out = BytesIO(); wb.save(out); return out.getvalue()
 
 
-PDF_COLS = [('RFI No.', 26), ('Rev', 7), ('Insp. Date', 17), ('Time', 11), ('Item', 26), ('Contractor Request / Works Description', 70), ('From', 18), ('To', 18),
-            ('Side', 12), ('Road Type', 15), ('RFI Status / Disposition', 42), ('Appr. From', 17), ('Appr. To', 17), ('Inspectors (sequence)', 50),
-            ('Workflow', 24), ('Batch', 22), ('Remark', 30)]
+# key -> (header, width, value). Keys match the register screen's column ids, so the PDF follows the user's visible columns.
+PDF_CATALOG = {
+    'rfi_number': ('RFI No.', 26, lambda r, x: r.rfi_number), 'revision_no': ('Rev', 7, lambda r, x: r.revision_no),
+    'inspection_date': ('Insp. Date', 17, lambda r, x: fmt_d(r.inspection_date)), 'inspection_time': ('Time', 11, lambda r, x: r.inspection_time or r.inspection_time_text),
+    'work_item': ('Item', 26, lambda r, x: r.work_item), 'contractor_request': ('Contractor Request / Works Description', 70, lambda r, x: r.contractor_request or r.description),
+    'description': ('Description', 40, lambda r, x: r.description), 'structure_type': ('Structure type', 24, lambda r, x: r.structure_type),
+    'chainage_from': ('From', 18, lambda r, x: r.chainage_from), 'chainage_to': ('To', 18, lambda r, x: r.chainage_to), 'side': ('Side', 12, lambda r, x: r.side),
+    'road_type': ('Road Type', 15, lambda r, x: r.road_type), 'direction': ('Direction', 12, lambda r, x: r.direction),
+    'rfi_status': ('RFI Status / Disposition', 42, lambda r, x: x['rfi_status']), 'approved_from': ('Appr. From', 17, lambda r, x: r.approved_from),
+    'approved_to': ('Appr. To', 17, lambda r, x: r.approved_to), 'inspectors': ('Inspectors (sequence)', 50, lambda r, x: x['inspectors']),
+    'workflow_status': ('Workflow', 24, lambda r, x: STATUS_LABELS.get(r.workflow_status, r.workflow_status)), 'batch': ('Batch', 22, lambda r, x: x['batch']),
+    'remarks': ('Remark', 30, lambda r, x: r.remarks), 'boq_item': ('BOQ', 14, lambda r, x: r.boq_item),
+    'fill_layer': ('Fill Layer', 18, lambda r, x: r.fill_layer), 'material_source_type': ('Mat. Source Type', 20, lambda r, x: r.material_source_type),
+    'material_source_cut_section': ('Mat. Cut Sec.', 20, lambda r, x: r.material_source_cut_section),
+    'material_source_designation': ('Mat. Source Desig.', 24, lambda r, x: r.material_source_designation or r.material_source),
+    'material_destination_designation': ('Mat. Destination', 22, lambda r, x: r.material_destination_designation), 'work_status': ('Work_Status', 18, lambda r, x: r.work_status),
+}
+HIDDEN_KEYS = {'fill_layer', 'material_source_type', 'material_source_cut_section', 'material_source_designation', 'material_destination_designation', 'work_status'}
+PDF_DEFAULT = ['rfi_number', 'revision_no', 'inspection_date', 'inspection_time', 'work_item', 'contractor_request', 'chainage_from', 'chainage_to', 'side', 'road_type',
+               'rfi_status', 'approved_from', 'approved_to', 'inspectors', 'workflow_status', 'batch', 'remarks']
+PDF_COLS = [(PDF_CATALOG[k][0], PDF_CATALOG[k][1]) for k in PDF_DEFAULT]
 
 
-def register_pdf(db, rows, project_label: str, filters: dict, user: User) -> bytes:
+def register_pdf(db, rows, project_label: str, filters: dict, user: User, columns: list | None = None, hidden_allowed=lambda r: True) -> bytes:
     out = BytesIO()
     size = landscape(A3)
     doc = SimpleDocTemplate(out, pagesize=size, leftMargin=8 * mm, rightMargin=8 * mm, topMargin=8 * mm, bottomMargin=12 * mm, title='DOC_02 RFI Register')
@@ -317,14 +389,16 @@ def register_pdf(db, rows, project_label: str, filters: dict, user: User) -> byt
     story = [Paragraph(f'PROJECT:- {e(project_label)}', P9B), Paragraph('DOC_02 - Main RFI Record Sheet', TITLE),
              Paragraph(f'Exported {datetime.utcnow():%d/%m/%Y %H:%M} UTC by {e(user.full_name)} - {len(rows)} record(s). '
                        + ('Filters: ' + e('; '.join(f'{k}={v}' for k, v in filters.items())) if filters else 'Filters: none (all authorised records)'), P8), Spacer(1, 2 * mm)]
-    data = [[p(h, P7) for h, _ in PDF_COLS]]
+    keys = [c for c in (columns or PDF_DEFAULT) if c in PDF_CATALOG] or PDF_DEFAULT
+    if any(not hidden_allowed(r) for r in rows):
+        keys = [c for c in keys if c not in HIDDEN_KEYS]  # restricted hidden workbook fields are never printed
+    cols = [PDF_CATALOG[k] for k in keys]
+    data = [[p(h, P7) for h, _, _ in cols]]
     for r in rows:
         x = ex[r.id]
-        data.append([p(v, P7) for v in [r.rfi_number, r.revision_no, fmt_d(r.inspection_date), r.inspection_time or r.inspection_time_text, r.work_item,
-                                         r.contractor_request or r.description, r.chainage_from, r.chainage_to, r.side, r.road_type, x['rfi_status'], r.approved_from,
-                                         r.approved_to, x['inspectors'], STATUS_LABELS.get(r.workflow_status, r.workflow_status), x['batch'], r.remarks]])
-    k = W / (sum(w for _, w in PDF_COLS) * mm)
-    t = Table(data, colWidths=[w * mm * k for _, w in PDF_COLS], repeatRows=1)
+        data.append([p(fn(r, x), P7) for _, _, fn in cols])
+    k = W / (sum(w for _, w, _ in cols) * mm)
+    t = Table(data, colWidths=[w * mm * k for _, w, _ in cols], repeatRows=1)
     t.setStyle(TableStyle(GRID + [('BACKGROUND', (0, 0), (-1, 0), SHADE), ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F6F8FA')])]))
     story.append(t)
     doc.build(story, canvasmaker=canvas_with(f'{project_label[:90]} | DOC_02 register | Generated by RFIMS'))

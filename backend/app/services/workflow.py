@@ -97,6 +97,7 @@ RFI_FIELDS = [c for c in Rfi.__table__.columns.keys()]
 
 LEGACY_REQUESTED_NOTE = 'Not recorded in the historical register'
 LEGACY_ORIGIN_LABEL = 'Imported from the historical DOC_02 register'
+LEGACY_FILE_UNAVAILABLE = 'File unavailable — migration required'
 
 
 def requested_date_is_import_copy(r: Rfi) -> bool:
@@ -121,6 +122,9 @@ def rfi_dict(r: Rfi, extra: dict | None = None) -> dict:
     d['requested_date_display'] = None if copy else r.requested_date
     d['requested_date_note'] = LEGACY_REQUESTED_NOTE if copy else None
     d['origin_label'] = LEGACY_ORIGIN_LABEL if r.provenance == 'LEGACY_IMPORT' else None
+    # Historical File_Path / IPC helper values point at the former shared drive. They are never returned as paths (UI design s.16).
+    has_doc, has_ipc = bool(d.pop('legacy_file_path', None)), bool(d.pop('legacy_ipc_file_path', None))
+    d['legacy_document'] = {'available': False, 'label': LEGACY_FILE_UNAVAILABLE, 'has_reference': has_doc, 'has_ipc_reference': has_ipc} if (has_doc or has_ipc) else None
     if extra:
         d.update(extra)
     return d

@@ -44,6 +44,21 @@ class RegisterFilter:
         return {f.name: getattr(self, f.name) for f in fields(self) if f.name not in skip and getattr(self, f.name) not in (None, '', False)}
 
 
+HIDDEN_FIELDS = ('fill_layer', 'material_source_type', 'material_source_cut_section', 'material_source_designation', 'material_destination_designation', 'work_status')
+
+
+def hidden_policy(db, user):
+    """Returns a function rfi -> bool: may this user see the workbook's hidden columns I:M and S for that RFI's project? (UD-06)"""
+    cache = {}
+    def allowed(r) -> bool:
+        if r.project_id not in cache:
+            role = authz.project_role(db, user, r.project_id)
+            cats = get_settings(db.get(Project, r.project_id)).get('hidden_field_categories') or []
+            cache[r.project_id] = bool(role) and authz.category(role) in cats
+        return cache[r.project_id]
+    return allowed
+
+
 def register_query(db, user, f: RegisterFilter, for_export: bool = False):
     """Return a SELECT over Rfi restricted to what `user` may see, with filters applied."""
     if f.project_id is not None:

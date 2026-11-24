@@ -1,5 +1,5 @@
 from datetime import datetime,date
-from sqlalchemy import String,Integer,DateTime,Date,Text,Boolean,ForeignKey,UniqueConstraint,Float
+from sqlalchemy import String,Integer,DateTime,Date,Text,Boolean,ForeignKey,UniqueConstraint,Float,CheckConstraint,ForeignKeyConstraint
 from sqlalchemy.orm import Mapped,mapped_column
 from app.database import Base
 
@@ -166,6 +166,11 @@ class ReviewerAssignment(Base):
     activated_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
     change_reason:Mapped[str|None]=mapped_column(Text,nullable=True)
     sequence_backfilled:Mapped[bool|None]=mapped_column(Boolean,nullable=True)
+    # UI design v1: the active inspector's unsent DOC_03 comment (preserved if an upload fails or the page closes)
+    draft_comment:Mapped[str|None]=mapped_column(Text,nullable=True)
+    draft_saved_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    # (id, rfi_id) is unique so attachments can carry a composite foreign key that pins evidence to the RFI of its review.
+    __table_args__=(UniqueConstraint('id','rfi_id',name='uq_assignment_id_rfi'),)
 
 class Review(Base):
     __tablename__='reviews'
@@ -176,6 +181,10 @@ class Review(Base):
     recommendation:Mapped[str]=mapped_column(String(50))
     comment:Mapped[str]=mapped_column(Text)
     reviewed_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    # UI design v1 sign-off: identity of the authenticated user and the server time are recorded; no signature image is generated.
+    reviewer_name_snapshot:Mapped[str|None]=mapped_column(String(150),nullable=True)
+    reviewer_role_snapshot:Mapped[str|None]=mapped_column(String(60),nullable=True)
+    attachment_count:Mapped[int|None]=mapped_column(Integer,nullable=True)
 
 class Decision(Base):
     __tablename__='decisions'
@@ -192,6 +201,40 @@ class Decision(Base):
     approved_from:Mapped[str|None]=mapped_column(String(255),nullable=True)
     approved_to:Mapped[str|None]=mapped_column(String(255),nullable=True)
     conditions:Mapped[str|None]=mapped_column(Text,nullable=True)
+    decided_by_name_snapshot:Mapped[str|None]=mapped_column(String(150),nullable=True)
+    designation_snapshot:Mapped[str|None]=mapped_column(String(100),nullable=True)
+
+
+# Workflow stages at which RE/DRE (Category 2.1) may record a management remark with its own evidence.
+REMARK_STAGES=('DOC01_REVIEW','ASSIGNMENT','SEQUENCE_CHANGE','REASSIGNMENT_RETURN','FINAL_DISPOSITION')
+
+
+class ManagementRemark(Base):
+    """A Category 2.1 management remark: a distinct record that owns its supporting attachments (UI design s.5, s.14).
+    DRAFT remarks are visible only to their author. A remark is SUBMITTED (locked, with its files) by the workflow action it
+    belongs to (assignment, sequence change, return, final disposition) or, at DOC_01 review, on its own."""
+    __tablename__='management_remarks'
+    id:Mapped[int]=mapped_column(primary_key=True)
+    project_id:Mapped[int]=mapped_column(ForeignKey('projects.id'),index=True)
+    rfi_id:Mapped[int|None]=mapped_column(ForeignKey('rfis.id'),nullable=True,index=True)
+    summary_id:Mapped[int|None]=mapped_column(ForeignKey('rfi_summaries.id'),nullable=True,index=True)
+    stage:Mapped[str]=mapped_column(String(30))
+    author_id:Mapped[int]=mapped_column(ForeignKey('users.id'),index=True)
+    author_role:Mapped[str]=mapped_column(String(60))
+    author_name_snapshot:Mapped[str|None]=mapped_column(String(150),nullable=True)
+    body:Mapped[str|None]=mapped_column(Text,nullable=True)
+    status:Mapped[str]=mapped_column(String(20),default='DRAFT',index=True)
+    decision_id:Mapped[int|None]=mapped_column(ForeignKey('decisions.id'),nullable=True)
+    client_request_id:Mapped[str|None]=mapped_column(String(64),nullable=True,unique=True)
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    updated_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    submitted_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    version:Mapped[int]=mapped_column(Integer,default=1)
+    __table_args__=(UniqueConstraint('id','project_id',name='uq_mremark_id_project'),
+                    CheckConstraint('rfi_id IS NOT NULL OR summary_id IS NOT NULL',name='ck_mremark_parent'),
+                    CheckConstraint("stage IN ('DOC01_REVIEW','ASSIGNMENT','SEQUENCE_CHANGE','REASSIGNMENT_RETURN','FINAL_DISPOSITION')",name='ck_mremark_stage'),
+                    CheckConstraint("status IN ('DRAFT','SUBMITTED','DISCARDED')",name='ck_mremark_status'))
+
 
 class Attachment(Base):
     __tablename__='attachments'
@@ -206,6 +249,39 @@ class Attachment(Base):
     uploaded_by:Mapped[int]=mapped_column(ForeignKey('users.id'))
     uploaded_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
     is_active:Mapped[bool]=mapped_column(Boolean,default=True)
+    # ---- UI design v1 evidence architecture (additive; see docs/ui-upgrade/ATTACHMENT_ARCHITECTURE.md)
+    # attachment_kind: RECORD (contractor enclosure / batch / daily progress / pre-v1 files),
+    #                  MANAGEMENT_REMARK (Category 2.1 path), INSPECTOR_REVIEW (Category 2.2 path).
+    attachment_kind:Mapped[str|None]=mapped_column(String(30),nullable=True,default='RECORD',index=True)
+    project_id:Mapped[int|None]=mapped_column(ForeignKey('projects.id'),nullable=True,index=True)
+    rfi_id:Mapped[int|None]=mapped_column(ForeignKey('rfis.id'),nullable=True,index=True)
+    summary_id:Mapped[int|None]=mapped_column(ForeignKey('rfi_summaries.id'),nullable=True,index=True)
+    management_remark_id:Mapped[int|None]=mapped_column(Integer,nullable=True,index=True)
+    assignment_id:Mapped[int|None]=mapped_column(Integer,nullable=True,index=True)
+    review_id:Mapped[int|None]=mapped_column(ForeignKey('reviews.id'),nullable=True)
+    amendment_id:Mapped[int|None]=mapped_column(ForeignKey('rfi_amendments.id'),nullable=True,index=True)
+    workflow_stage:Mapped[str|None]=mapped_column(String(40),nullable=True)
+    author_role:Mapped[str|None]=mapped_column(String(60),nullable=True)
+    sha256:Mapped[str|None]=mapped_column(String(64),nullable=True)
+    upload_status:Mapped[str|None]=mapped_column(String(20),nullable=True,default='COMPLETE')   # COMPLETE / PENDING_APPROVAL / REJECTED
+    scan_status:Mapped[str|None]=mapped_column(String(20),nullable=True,default='NOT_SCANNED')  # NOT_SCANNED / CLEAN / ERROR
+    scanned_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    version_no:Mapped[int|None]=mapped_column(Integer,nullable=True,default=1)
+    supersedes_id:Mapped[int|None]=mapped_column(ForeignKey('attachments.id'),nullable=True)
+    superseded_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    locked_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    upload_token:Mapped[str|None]=mapped_column(String(64),nullable=True)
+    removed_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
+    removed_by:Mapped[int|None]=mapped_column(ForeignKey('users.id'),nullable=True)
+    __table_args__=(
+        UniqueConstraint('uploaded_by','upload_token',name='uq_attachment_upload_token'),
+        # A remark's evidence must belong to the remark's project; a review's evidence to the review's RFI.
+        ForeignKeyConstraint(['management_remark_id','project_id'],['management_remarks.id','management_remarks.project_id'],name='fk_attachment_remark_project'),
+        ForeignKeyConstraint(['assignment_id','rfi_id'],['reviewer_assignments.id','reviewer_assignments.rfi_id'],name='fk_attachment_assignment_rfi'),
+        CheckConstraint("(attachment_kind='MANAGEMENT_REMARK' AND management_remark_id IS NOT NULL AND assignment_id IS NULL AND project_id IS NOT NULL)"
+                        " OR (attachment_kind='INSPECTOR_REVIEW' AND assignment_id IS NOT NULL AND rfi_id IS NOT NULL AND management_remark_id IS NULL AND project_id IS NOT NULL)"
+                        " OR (attachment_kind='RECORD' AND management_remark_id IS NULL AND assignment_id IS NULL)",name='ck_attachment_path'),
+    )
 
 class DailyProgress(Base):
     __tablename__='daily_progress'
@@ -288,6 +364,11 @@ class RfiAmendment(Base):
     resolved_by:Mapped[int|None]=mapped_column(ForeignKey('users.id'),nullable=True)
     resolved_at:Mapped[datetime|None]=mapped_column(DateTime,nullable=True)
     resolution_comment:Mapped[str|None]=mapped_column(Text,nullable=True)
+    # UI design v1: NULL/'FIELDS' = DOC_01 field amendment (SRS v1.0); 'REVIEW' / 'REMARK' = correction of a locked inspector
+    # review or management remark (new comment text and/or new evidence versions). Evidence amendments start as DRAFT.
+    amendment_type:Mapped[str|None]=mapped_column(String(20),nullable=True)
+    target_assignment_id:Mapped[int|None]=mapped_column(ForeignKey('reviewer_assignments.id'),nullable=True)
+    target_remark_id:Mapped[int|None]=mapped_column(ForeignKey('management_remarks.id'),nullable=True)
 
 
 class IssuedDocument(Base):
@@ -302,3 +383,16 @@ class IssuedDocument(Base):
     sha256:Mapped[str]=mapped_column(String(64))
     issued_by:Mapped[int]=mapped_column(ForeignKey('users.id'))
     issued_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+
+
+class RegisterView(Base):
+    """A user's saved DOC_02 register view (filters, sort, visible columns)."""
+    __tablename__='register_views'
+    id:Mapped[int]=mapped_column(primary_key=True)
+    user_id:Mapped[int]=mapped_column(ForeignKey('users.id'),index=True)
+    project_id:Mapped[int|None]=mapped_column(ForeignKey('projects.id'),nullable=True)
+    name:Mapped[str]=mapped_column(String(80))
+    config_json:Mapped[str]=mapped_column(Text)
+    created_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    updated_at:Mapped[datetime]=mapped_column(DateTime,default=datetime.utcnow)
+    __table_args__=(UniqueConstraint('user_id','project_id','name',name='uq_register_view_name'),)

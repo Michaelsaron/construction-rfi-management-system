@@ -133,9 +133,14 @@ class AssignmentPlan(BaseModel):
     """The ordered list of inspectors still to review (index 0 reviews first)."""
     assignments: list[AssignmentItem]
     reason: str | None = None
+    management_remark_id: int | None = None   # optional draft remark (with its evidence) locked by this action
 
 
-class ReviewCreate(BaseModel): assignment_id: int; comment: str; recommendation: str | None = None
+class ReviewCreate(BaseModel):
+    assignment_id: int
+    comment: str
+    recommendation: str | None = None
+    attachment_count: int | None = None   # evidence count the inspector confirmed; a mismatch is refused (409)
 
 
 class DecisionCreate(BaseModel):
@@ -145,6 +150,8 @@ class DecisionCreate(BaseModel):
     approved_from: str | None = None
     approved_to: str | None = None
     work_status: str | None = None
+    management_remark_id: int | None = None
+    evidence_count: int | None = None
 
 
 class RevisionCreate(BaseModel):
@@ -160,7 +167,9 @@ class RevisionCreate(BaseModel):
 
 
 class StateChange(BaseModel): reason: str
-class ReturnBatch(BaseModel): reason: str
+class ReturnBatch(BaseModel):
+    reason: str
+    management_remark_id: int | None = None
 
 
 class DailyProgressCreate(BaseModel):
@@ -187,3 +196,36 @@ class AdminResetPasswordIn(BaseModel): new_password: str
 class MasterUpdate(BaseModel): value: str; parent_value: str | None = None; code: str | None = None
 class ChangePasswordIn(BaseModel): current_password: str; new_password: str
 class UserProjectsIn(BaseModel): project_ids: list[int] = []
+
+
+# ---------------------------------------------------------------- UI design v1: evidence
+class RemarkCreate(BaseModel):
+    project_id: int
+    stage: str
+    rfi_id: int | None = None
+    summary_id: int | None = None
+    body: str | None = None
+    client_request_id: str | None = None
+
+
+class RemarkUpdate(BaseModel):
+    body: str | None = None
+    version: int | None = None
+
+
+class DraftComment(BaseModel):
+    comment: str | None = None
+
+
+class EvidenceAmendmentCreate(BaseModel):
+    """Correction of a locked inspector review (target_kind REVIEW, target_id = assignment id) or management remark (REMARK)."""
+    target_kind: str
+    target_id: int
+    reason: str
+    new_comment: str | None = None
+
+
+class RegisterViewIn(BaseModel):
+    name: str
+    project_id: int | None = None
+    config: dict

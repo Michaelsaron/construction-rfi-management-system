@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import (Rfi, RfiSummary, ReviewerAssignment, Review, Decision, User, ReviewerRule, RfiStatusHistory, Project,
-                        RfiAmendment, IssuedDocument, ProjectUser)
+                        RfiAmendment, IssuedDocument, ProjectUser, Attachment, ManagementRemark)
 from app.schemas import RfiCreate, RfiUpdate, AssignmentPlan, ReviewCreate, DecisionCreate, RevisionCreate, StateChange, AmendmentCreate, AmendmentResolve, RfiFields
 from app.security import current_user
 from app import authz
@@ -15,7 +15,8 @@ from app.services.audit import log
 from app.services.notify import notify, notify_project_roles
 from app.services.workflow import (lock_rfi, transition, require_active_record, active_assignments, rfi_dict, compute_notice,
                                    OPEN_FOR_ASSIGNMENT, STATUS_LABELS, site_now)
-from app.services.register import RegisterFilter, register_query
+from app.services.register import RegisterFilter, register_query, hidden_policy, HIDDEN_FIELDS
+from app.services import evidence as ev
 
 router = APIRouter(prefix='/rfis', tags=['RFIs'])
 
@@ -93,8 +94,19 @@ def ls(f: RegisterFilter = Depends(filter_params), limit: int = Query(50, ge=1, 
     rows = list(db.scalars(s.offset(offset).limit(limit)))
     insp = inspectors_by_rfi(db, [r.id for r in rows])
     refs = {x.id: x.summary_reference for x in db.scalars(select(RfiSummary).where(RfiSummary.id.in_({r.summary_id for r in rows if r.summary_id})))} if rows else {}
-    return {'total': total, 'limit': limit, 'offset': offset, 'filters': f.active(),
-            'items': [rfi_dict(r, {'inspectors': insp.get(r.id, []), 'summary_reference': refs.get(r.summary_id)}) for r in rows]}
+    allowed = hidden_policy(db, u)
+    items = []
+    for r in rows:
+        d = rfi_dict(r, {'inspectors': insp.get(r.id, []), 'summary_reference': refs.get(r.summary_id)})
+        if not allowed(r):
+            for k in HIDDEN_FIELDS: d[k] = None
+            d['hidden_fields_restricted'] = True
+        items.append(d)
+    hidden_ok = None
+    if f.project_id:
+        role = authz.project_role(db, u, f.project_id)
+        hidden_ok = bool(role) and authz.category(role) in (get_settings(db.get(Project, f.project_id)).get('hidden_field_categories') or [])
+    return {'total': total, 'limit': limit, 'offset': offset, 'filters': f.active(), 'hidden_fields_allowed': hidden_ok, 'items': items}
 
 
 @router.get('/my-inspections')
@@ -128,7 +140,10 @@ def one(rid: int, db: Session = Depends(get_db), u: User = Depends(current_user)
     reviews = list(db.scalars(select(Review).where(Review.rfi_id == rid)))
     decs = list(db.scalars(select(Decision).where(Decision.rfi_id == rid).order_by(Decision.id.desc())))
     hist = list(db.scalars(select(RfiStatusHistory).where(RfiStatusHistory.rfi_id == rid).order_by(RfiStatusHistory.id.desc())))
-    amends = list(db.scalars(select(RfiAmendment).where(RfiAmendment.rfi_id == rid).order_by(RfiAmendment.id.desc())))
+    amends = [a for a in db.scalars(select(RfiAmendment).where(RfiAmendment.rfi_id == rid).order_by(RfiAmendment.id.desc()))
+              if a.status not in ('DRAFT', 'WITHDRAWN') or a.requested_by == u.id]
+    ev_counts = dict(db.execute(select(Attachment.assignment_id, func.count()).where(Attachment.rfi_id == rid, Attachment.assignment_id.is_not(None), *ev.live_clause())
+                                .group_by(Attachment.assignment_id)).all())
     issued = list(db.scalars(select(IssuedDocument).where(IssuedDocument.rfi_id == rid).order_by(IssuedDocument.id.desc())))
     revisions = list(db.scalars(select(Rfi).where(Rfi.project_id == r.project_id, Rfi.rfi_number == r.rfi_number).order_by(Rfi.revision_no)))
     summary = db.get(RfiSummary, r.summary_id) if r.summary_id else None
@@ -146,18 +161,23 @@ def one(rid: int, db: Session = Depends(get_db), u: User = Depends(current_user)
         x = {k: getattr(a, k) for k in ReviewerAssignment.__table__.columns.keys()}
         x['user_name'] = nm.get(a.user_id)
         rr = rv.get(a.id)
-        x['review'] = {'comment': rr.comment, 'recommendation': rr.recommendation, 'reviewed_at': rr.reviewed_at, 'reviewer_name': nm.get(rr.reviewer_id)} if rr else None
+        x['review'] = {'comment': rr.comment, 'recommendation': rr.recommendation, 'reviewed_at': rr.reviewed_at, 'reviewer_name': rr.reviewer_name_snapshot or nm.get(rr.reviewer_id),
+                       'attachment_count': rr.attachment_count} if rr else None
+        x['evidence_count'] = ev_counts.get(a.id, 0) if (rr or a.user_id == u.id or mgmt) else None
+        x['reviewer_role_label'] = authz.ROLE_LABELS.get(a.reviewer_role, a.reviewer_role)
+        x.pop('draft_comment', None)  # the inspector's unsent draft is private (GET /evidence/assignments/{id})
         # Later inspectors see that an earlier review exists, not necessarily its content? SRS: read-only view is permitted.
         return x
     return {
         'rfi': rfi_dict(r), 'project': {'id': project.id, 'code': project.code, 'name': project.name, 'deputy_label': settings['deputy_label']},
         'summary': {'id': summary.id, 'summary_reference': summary.summary_reference, 'workflow_status': summary.workflow_status,
                     'submitted_at': summary.submitted_at, 'submitted_by_name': nm.get(summary.submitted_by)} if summary else None,
-        'my_role': role, 'assignments': [a_out(a) for a in assigns],
-        'decisions': [{**{k: getattr(d, k) for k in Decision.__table__.columns.keys()}, 'decided_by_name': nm.get(d.decided_by),
+        'my_role': role, 'my_category': authz.category(role), 'my_name': u.full_name, 'assignments': [a_out(a) for a in assigns],
+        'project_detail': {'contract_number': project.contract_number, 'employer': project.employer, 'consultant': project.consultant, 'contractor': project.contractor},
+        'decisions': [{**{k: getattr(d, k) for k in Decision.__table__.columns.keys()}, 'decided_by_name': d.decided_by_name_snapshot or nm.get(d.decided_by),
                        'disposition_label': (disposition(settings, d.disposition_code) or {}).get('label') if d.disposition_code else None} for d in decs],
         'history': [{**{k: getattr(h, k) for k in RfiStatusHistory.__table__.columns.keys()}, 'changed_by_name': nm.get(h.changed_by)} for h in hist],
-        'amendments': [{**{k: getattr(a, k) for k in RfiAmendment.__table__.columns.keys()}, 'changes': json.loads(a.changes_json),
+        'amendments': [{**{k: getattr(a, k) for k in RfiAmendment.__table__.columns.keys()}, 'changes': json.loads(a.changes_json or '{}'),
                         'requested_by_name': nm.get(a.requested_by), 'resolved_by_name': nm.get(a.resolved_by)} for a in amends],
         'issued_documents': [{'id': i.id, 'doc_type': i.doc_type, 'revision_no': i.revision_no, 'issued_at': i.issued_at, 'sha256': i.sha256} for i in issued],
         'revisions': [{'id': x.id, 'revision_no': x.revision_no, 'workflow_status': x.workflow_status, 'current_decision': x.current_decision} for x in revisions],
@@ -172,7 +192,13 @@ def one(rid: int, db: Session = Depends(get_db), u: User = Depends(current_user)
             'resolve_amendment': open_ and mgmt,
             'resubmit': can_resub,
             'cancel': open_ and mgmt and r.workflow_status not in ('COMPLETED', 'CANCELLED'),
+            # UI design v1
+            'management_remark': open_ and mgmt and r.workflow_status in OPEN_FOR_ASSIGNMENT,
+            'amend_review_assignment_ids': [a.id for a in assigns if a.status == 'COMPLETED' and open_ and r.workflow_status not in ('COMPLETED', 'CANCELLED')
+                                            and ((a.user_id == u.id and role in authz.INSPECTORS) or mgmt)],
         },
+        # read capability (not a write permission)
+        'can_download_bundle': r.workflow_status == 'COMPLETED' and role in (authz.MANAGEMENT | authz.OFFICE | {authz.ADMIN}),
     }
 
 
@@ -265,6 +291,9 @@ def plan_assignments(rid: int, d: AssignmentPlan, db: Session = Depends(get_db),
     before = [{'seq': a.sequence_no, 'user_id': a.user_id, 'role': a.reviewer_role, 'status': a.status} for a in existing]
     if [(a.user_id, a.reviewer_role) for a in pending] == [(t.id, ro) for t, ro in plan]:
         return {'ok': True, 'changed': False}
+    from app.routers.evidence import submit_remark
+    remark = submit_remark(db, u, d.management_remark_id, stage='SEQUENCE_CHANGE' if (started or pending) else 'ASSIGNMENT', rfi=r,
+                           body=reason or None)
     now = datetime.utcnow()
     for a in pending:
         a.status = 'REPLACED'; a.change_reason = reason or 'Re-planned before inspection started'
@@ -287,7 +316,7 @@ def plan_assignments(rid: int, d: AssignmentPlan, db: Session = Depends(get_db),
     after = [{'seq': a.sequence_no, 'user_id': a.user_id, 'role': a.reviewer_role, 'status': a.status} for a in created]
     log(db, u.id, 'RFI', rid, 'ASSIGN_SEQUENCE' if not started else 'CHANGE_SEQUENCE', reason or None, project_id=r.project_id, before=before, after=after)
     db.commit()
-    return {'ok': True, 'changed': True, 'assignments': after}
+    return {'ok': True, 'changed': True, 'assignments': after, 'management_remark_id': remark.id if remark else None}
 
 
 @router.post('/{rid}/review')
@@ -306,11 +335,18 @@ def review(rid: int, d: ReviewCreate, db: Session = Depends(get_db), u: User = D
         who = f' Waiting for inspector #{cur.sequence_no} ({authz.ROLE_LABELS.get(cur.reviewer_role, cur.reviewer_role)}).' if cur else ''
         raise HTTPException(409, 'It is not your turn to review this RFI yet.' + who)
     if not (d.comment or '').strip(): raise HTTPException(400, 'Inspection comment is required')
+    n_files = ev.count_live(db, assignment_id=a.id)
+    if d.attachment_count is not None and d.attachment_count != n_files:
+        raise HTTPException(409, f'Your review has {n_files} evidence file(s) on the server, not {d.attachment_count}. An upload may still be running or has failed. Check the evidence list and submit again.')
     now = datetime.utcnow()
-    rv = Review(assignment_id=a.id, rfi_id=rid, reviewer_id=u.id, recommendation=(d.recommendation or 'NOT_STATED')[:50], comment=d.comment.strip(), reviewed_at=now)
+    rv = Review(assignment_id=a.id, rfi_id=rid, reviewer_id=u.id, recommendation=(d.recommendation or 'NOT_STATED')[:50], comment=d.comment.strip(), reviewed_at=now,
+                reviewer_name_snapshot=u.full_name, reviewer_role_snapshot=a.reviewer_role, attachment_count=n_files)
     db.add(rv)
-    a.status = 'COMPLETED'; a.completed_at = now
+    a.status = 'COMPLETED'; a.completed_at = now; a.draft_comment = None
     db.flush()
+    # The review and its evidence are locked together (version preservation).
+    ev.lock(db, Attachment.assignment_id == a.id, *ev.live_clause(), when=now)
+    for f in db.scalars(select(Attachment).where(Attachment.assignment_id == a.id, Attachment.review_id.is_(None))): f.review_id = rv.id
     nxt = db.scalar(select(ReviewerAssignment).where(ReviewerAssignment.rfi_id == rid, ReviewerAssignment.status == 'PENDING').order_by(ReviewerAssignment.sequence_no))
     if nxt:
         nxt.status = 'ACTIVE'; nxt.activated_at = now
@@ -321,9 +357,9 @@ def review(rid: int, d: ReviewCreate, db: Session = Depends(get_db), u: User = D
     else:
         transition(db, r, 'AWAITING_DECISION', u, 'All assigned inspector reviews completed')
         notify_project_roles(db, r.project_id, authz.MANAGEMENT, 'RFI awaiting final decision', f'All inspector reviews for RFI {r.rfi_number} Rev {r.revision_no} are complete. It awaits the RE/DRE final decision.', 'RFI', rid)
-    log(db, u.id, 'RFI', rid, 'REVIEW', f'sequence {a.sequence_no} {a.reviewer_role}', project_id=r.project_id, after={'comment': rv.comment, 'recommendation': rv.recommendation})
+    log(db, u.id, 'RFI', rid, 'REVIEW', f'sequence {a.sequence_no} {a.reviewer_role}; {n_files} evidence file(s)', project_id=r.project_id, after={'comment': rv.comment, 'recommendation': rv.recommendation, 'attachments': n_files})
     db.commit()
-    return {'ok': True, 'review_id': rv.id, 'next_sequence': nxt.sequence_no if nxt else None, 'workflow_status': r.workflow_status}
+    return {'ok': True, 'review_id': rv.id, 'next_sequence': nxt.sequence_no if nxt else None, 'workflow_status': r.workflow_status, 'attachment_count': n_files, 'reviewed_at': now}
 
 
 @router.post('/{rid}/decision')
@@ -345,9 +381,17 @@ def decide(rid: int, d: DecisionCreate, db: Session = Depends(get_db), u: User =
     if disp['decision'] == 'APPROVED' and not af and not at:
         af, at = r.chainage_from, r.chainage_to
     before = {'current_decision': r.current_decision, 'current_disposition': r.current_disposition, 'approved_from': r.approved_from, 'approved_to': r.approved_to, 'work_status': r.work_status}
+    role = authz.project_role(db, u, r.project_id)
     x = Decision(rfi_id=rid, revision_no=r.revision_no, decision=disp['decision'], disposition_code=disp['code'], comment=(d.comment or '').strip() or None,
-                 conditions=(d.conditions or '').strip() or None, approved_from=af, approved_to=at, decided_by=u.id, override_used=False)
-    db.add(x)
+                 conditions=(d.conditions or '').strip() or None, approved_from=af, approved_to=at, decided_by=u.id, override_used=False,
+                 decided_by_name_snapshot=u.full_name, designation_snapshot=authz.ROLE_LABELS.get(role, role))
+    db.add(x); db.flush()
+    from app.routers.evidence import submit_remark
+    remark = submit_remark(db, u, d.management_remark_id, stage='FINAL_DISPOSITION', rfi=r, body=x.comment, decision_id=x.id)
+    if d.evidence_count is not None:
+        n_mgmt = ev.count_live(db, management_remark_id=remark.id) if remark else 0
+        if n_mgmt != d.evidence_count:
+            raise HTTPException(409, f'The final remark has {n_mgmt} file(s) on the server, not {d.evidence_count}. An upload may still be running. Check and record again.')
     r.current_decision = disp['decision']; r.current_disposition = disp['code']
     r.approved_from = af; r.approved_to = at
     if d.work_status: r.work_status = d.work_status
@@ -435,6 +479,20 @@ def _resolve(aid, approve, d, db, u):
     authz.require_project(db, u, a.project_id, authz.MANAGEMENT, write=True)
     if a.status != 'PENDING': raise HTTPException(409, 'This amendment has already been resolved')
     changes = json.loads(a.changes_json)
+    if a.amendment_type in ('REVIEW', 'REMARK'):
+        require_active_record(r)
+        if approve and r.workflow_status in ('COMPLETED', 'CANCELLED'):
+            raise HTTPException(409, 'The DOC_03 has been issued since this correction was requested; it can only be rejected')
+        from app.routers.evidence import apply_evidence_amendment
+        apply_evidence_amendment(db, a, approve, u)
+        a.status = 'APPROVED' if approve else 'REJECTED'; a.resolved_by = u.id; a.resolved_at = datetime.utcnow(); a.resolution_comment = (d.comment or '').strip() or None
+        db.add(RfiStatusHistory(rfi_id=r.id, workflow_status=r.workflow_status, decision=r.current_decision, changed_by=u.id,
+                                reason=f'Evidence correction {"approved" if approve else "rejected"} ({a.amendment_type.lower()}): {a.reason}'))
+        log(db, u.id, 'RFI', r.id, 'APPROVE_EVIDENCE_AMENDMENT' if approve else 'REJECT_EVIDENCE_AMENDMENT', a.resolution_comment, project_id=r.project_id, after=changes)
+        if a.requested_by != u.id:
+            notify(db, a.requested_by, f'Evidence correction {"approved" if approve else "rejected"}', f'Your correction on RFI {r.rfi_number} was {"approved" if approve else "rejected"}.', 'RFI', r.id, r.project_id)
+        db.commit()
+        return {'ok': True, 'status': a.status}
     if approve:
         require_active_record(r)
         for k, ch in changes.items():
