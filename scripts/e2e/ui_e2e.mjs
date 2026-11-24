@@ -237,7 +237,8 @@ try {
     check('DOC_01 confirmation shows project, batch, row count and inspection times', d.includes('Sample Road Upgrading Project') && d.includes('-027') && d.includes('RFI rows') && d.includes('CC-513'), d.slice(0, 200));
     await page.getByRole('dialog').getByRole('button', { name: 'Submit DOC_01' }).click();
     await page.waitForSelector('text=/DOC_01 submitted/');
-    check('DOC_01 submitted and locked', (await page.$('text=+ Add RFI row')) === null);
+    const locked = await page.waitForSelector('text=+ Add RFI row', { state: 'detached', timeout: 10000 }).then(() => true).catch(() => false);
+    check('DOC_01 submitted and locked', locked);
     await go(page, `/evidence/files/1/download`).catch(() => {});
     await go(page, `/rfis/${R.completed}`);
     check('Contractor RFI view has no inspector-evidence download panel', !(await page.textContent('main')).includes('IMG_0910.jpg'));

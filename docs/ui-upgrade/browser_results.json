@@ -1,0 +1,367 @@
+{
+  "when": "2026-11-24T16:16:39.435Z",
+  "passed": 72,
+  "failed": 0,
+  "results": [
+    {
+      "name": "Admin navigation follows s.12",
+      "ok": true,
+      "detail": "Dashboard, Projects, Users, Project Memberships, Roles, Audit Log, Configuration, DOC_01 Submissions, DOC_02 Register, Completed DOC_03, Reports, Reference Data, Reviewer Rules"
+    },
+    {
+      "name": "Admin KPIs come from the database",
+      "ok": true,
+      "detail": "Active projects01Configured project workspaces | Active accounts1010 active project memberships | Pending invitationsNot enabledInvitation workflow pending decision UD-12 | Inactive accounts01Historical actions retained"
+    },
+    {
+      "name": "Pending invitations are not fabricated",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Header shows category and role",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Access matrix export downloads",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Memberships page lists roles",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Roles page loads",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Configuration shows attachment policy",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin /users renders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin /projects renders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin /audit renders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin /master-data renders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin /reports renders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin /daily-progress renders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin /notifications renders",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Admin pages have no script errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "RE/DRE navigation follows s.12",
+      "ok": true,
+      "detail": "Dashboard, DOC_01 Submissions, Inspector Assignment, Workflow Monitor, Final Decisions, DOC_02, Reports, Completed DOC_03, Daily Progress, Reference Data, Reviewer Rules, Audit Log"
+    },
+    {
+      "name": "Management dashboard KPIs and batch table",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "24-hour notice legend shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DOC_01 review remark recorded with evidence",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Assignment confirmation lists sequence and evidence",
+      "ok": true,
+      "detail": "Save the inspector assignment?RFI No.AS-015/2026Sequence1. Works Inspector — A. Inspector\n2. Material Inspector — B. InspectorRemarkCheck tack coat application "
+    },
+    {
+      "name": "Assignment saved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Timeline shows received, assignment, active and pending inspectors, locked decision",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Completed stage shows evidence to RE",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Partial approval requires the executed section",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Disposition confirmation shows disposition, remarks, evidence, decision-maker and sections",
+      "ok": true,
+      "detail": "Record the final disposition?This completes ST-006/2026 Rev 0, locks the record and issues the DOC_03. It cannot be changed afterwards.RFI No.ST-006/2026DispositionApproved: For further works for the "
+    },
+    {
+      "name": "Escape closes the confirmation",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Recording the disposition opens the completed DOC_03",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "RE pages have no script errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Inspector navigation follows s.12",
+      "ok": true,
+      "detail": "My Assigned RFIs, Active DOC_03, Review History, Attachments, DOC_02 Register, Daily Progress"
+    },
+    {
+      "name": "Active turn badge",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Draft comment saved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Camera without permission falls back to file selection; upload works",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Camera fallback hint shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Unsupported file rejected with explanation; comment kept",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Network interruption shows failure and keeps the comment",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Submit disabled? (no upload running after failure)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Retry stores the file once",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "Review confirmation shows RFI, role, sequence, comment, attachments, name, sign-off",
+      "ok": true,
+      "detail": "Submit your DOC_03 review?Your comment and evidence will be locked. The next inspector (or the RE/DRE) will be notified.RFI No.EW-021/2026Assigned roleWorks InspectorSequence position1 of 3Review comm"
+    },
+    {
+      "name": "Submitted review becomes read-only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Attachments menu lists own evidence as locked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Inspector pages have no script errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Pending inspector sees \"Awaiting previous reviewer\" and no upload controls",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Next inspector (mobile) has camera / gallery / files controls",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Mobile Save draft / Submit review bar is sticky",
+      "ok": true,
+      "detail": "fixed"
+    },
+    {
+      "name": "Mobile review page has no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Office navigation follows s.12",
+      "ok": true,
+      "detail": "DOC_02 Register, Completed DOC_03, Search, Reports, Exports, DOC_01 Submissions, Daily Progress"
+    },
+    {
+      "name": "Office lands on DOC_02 register",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Advanced toggle shows hidden workbook fields I:M and S",
+      "ok": true,
+      "detail": "RFI No.,Road type,Description,Fill layer,Source/destination type,Source cut section,Source designation,Destination designation,Requested From / To,Inspection,Work status,RFI status,Workflow,IPC,Document"
+    },
+    {
+      "name": "Legacy drive paths are not shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Saved view created",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Register Excel export",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Register PDF export (visible columns)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Completed DOC_03 shows sections, disposition and attachment index",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Evidence bundle downloads",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Issued DOC_03 PDF downloads",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Office record is read-only (no edit controls)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Search finds RFI",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Office pages have no script errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Phone register uses record cards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Phone register has no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Contractor navigation follows s.12",
+      "ok": true,
+      "detail": "New DOC_01, Draft Submissions, Submitted Batches, My RFI Records, Overview, Daily Progress"
+    },
+    {
+      "name": "New DOC_01 shows project and contract",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "DOC_01 confirmation shows project, batch, row count and inspection times",
+      "ok": true,
+      "detail": "Submit this DOC_01 to the RE/DRE?The RFI rows will be locked. Later corrections need an approved amendment.ProjectSample Road Upgrading ProjectBatch referenceDOC01-14D2-027RFI rows1Requested inspectio"
+    },
+    {
+      "name": "DOC_01 submitted and locked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Contractor RFI view has no inspector-evidence download panel",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Contractor pages have no script errors",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Phone DOC_01 has no horizontal scroll",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "First Tab reaches the skip link",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Skip link moves to main content",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Register columns sort by keyboard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "Register form controls are labelled",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

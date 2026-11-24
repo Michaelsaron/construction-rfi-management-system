@@ -1,4 +1,3 @@
-.env
 *.pyc
 __pycache__/
 node_modules/
@@ -20,3 +19,4 @@ backups/
 
 # Unredacted client-identifying copies of docs
 docs/private/
+config.bat
