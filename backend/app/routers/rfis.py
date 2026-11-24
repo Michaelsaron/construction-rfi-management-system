@@ -70,9 +70,10 @@ def filter_params(project_id: int | None = None, q: str | None = None, rfi_numbe
                   decision: str | None = None, disposition: str | None = None, legacy_status: str | None = None, work_item: str | None = None,
                   side: str | None = None, road_type: str | None = None, date_from: date | None = None, date_to: date | None = None,
                   inspector_id: int | None = None, submitted_by: int | None = None, summary_id: int | None = None, provenance: str | None = None,
-                  short_notice: bool | None = None, latest_only: bool = False, include_inactive: bool = False, sort: str = 'id', dir: str = 'desc') -> RegisterFilter:
+                  short_notice: bool | None = None, latest_only: bool = False, include_inactive: bool = False, sort: str = 'id', dir: str = 'desc',
+                  rfi_no: str | None = None) -> RegisterFilter:
     return RegisterFilter(project_id, q, rfi_number, workflow_status, decision, disposition, legacy_status, work_item, side, road_type, date_from,
-                          date_to, inspector_id, submitted_by, summary_id, provenance, short_notice, latest_only, include_inactive, sort, dir)
+                          date_to, inspector_id, submitted_by, summary_id, provenance, short_notice, latest_only, include_inactive, sort, dir, rfi_no)
 
 
 def inspectors_by_rfi(db, ids):
@@ -293,7 +294,7 @@ def plan_assignments(rid: int, d: AssignmentPlan, db: Session = Depends(get_db),
         return {'ok': True, 'changed': False}
     from app.routers.evidence import submit_remark
     remark = submit_remark(db, u, d.management_remark_id, stage='SEQUENCE_CHANGE' if (started or pending) else 'ASSIGNMENT', rfi=r,
-                           body=reason or None)
+                           body=(d.remark or '').strip() or reason or None)
     now = datetime.utcnow()
     for a in pending:
         a.status = 'REPLACED'; a.change_reason = reason or 'Re-planned before inspection started'

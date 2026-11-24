@@ -29,7 +29,7 @@ export default function Login() {
     <div className="login">
       <section className="login-art">
         <Link to="/home" className="brand" style={{ color: '#fff' }}>
-          <BrandMark /><span><span className="bt">Construction RFI</span><span className="bs">Site Control System</span></span>
+          <BrandMark /><span><span className="bt">RFIMS</span><span className="bs">Request for Inspection Management</span></span>
         </Link>
         <div>
           <SiteScene className="scene" />

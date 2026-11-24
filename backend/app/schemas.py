@@ -134,6 +134,7 @@ class AssignmentPlan(BaseModel):
     assignments: list[AssignmentItem]
     reason: str | None = None
     management_remark_id: int | None = None   # optional draft remark (with its evidence) locked by this action
+    remark: str | None = None                 # text of that remark (defaults to the reason)
 
 
 class ReviewCreate(BaseModel):

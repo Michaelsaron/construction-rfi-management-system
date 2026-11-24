@@ -26,7 +26,7 @@ export default function Projects() {
   }
   const field = (k: string, l: string, req = false) => <div><label>{l}</label><input required={req} disabled={k === 'code' && !!sel} value={f[k] || ''} onChange={e => setF({ ...f, [k]: e.target.value })} /></div>;
   return <>
-    <h1 className="page-title">Projects &amp; Members</h1><p className="subtitle">Each project keeps its own RFIs, DOC_01/02/03 records, members, notifications and audit trail.</p>
+    <h1 className="page-title">Projects</h1><p className="subtitle">Each project keeps its own RFIs, DOC_01/02/03 records, members, notifications and audit trail.</p>
     {msg && <div className="notice ok">{msg}</div>}
     <form className="card" onSubmit={save}><div className="section-title"><h3>{sel ? `Edit ${sel.code}` : 'New project'}</h3>{sel && <button type="button" className="btn secondary sm" onClick={() => { setSel(null); setF(BLANK); setMembers([]); setSettings(null); }}>New project instead</button>}</div>
       <div className="grid">{field('code', 'Code', true)}{field('name', 'Project / contract title', true)}{field('contract_number', 'Contract number')}{field('project_length', 'Project length')}{field('employer', 'Employer')}{field('consultant', 'Consultant / Engineer')}{field('contractor', 'Contractor')}</div>
@@ -43,15 +43,6 @@ export default function Projects() {
         <tbody>{members.map(m => <tr key={m.membership_id}><td>{m.full_name}</td><td>{m.email}</td><td>{m.role_label}{m.legacy_role && <span className="muted"> (from legacy global role)</span>}</td><td>{m.category}</td>
           <td><Status value={m.status === 'ACTIVE' ? 'ACTIVE' : 'CANCELLED'} label={m.status === 'ACTIVE' ? 'Active' : `Revoked ${fmtDate(m.revoked_at)}`} /></td>
           <td>{m.status === 'ACTIVE' && <button className="btn secondary sm" onClick={() => revoke(m)}>Revoke</button>}</td></tr>)}</tbody></table></div></div>}
-    {sel && settings && <div className="card"><h3>Project settings (pending client decisions)</h3><div className="grid">
-      <div><label>24-hour rule (OD-11)</label><select value={settings.notice_policy} onChange={e => setSettings({ ...settings, notice_policy: e.target.value })}><option value="FLAG">Flag short notice only</option><option value="REQUIRE_OVERRIDE">Require a reason</option></select></div>
-      <div><label>Notice hours</label><input type="number" value={settings.notice_hours} onChange={e => setSettings({ ...settings, notice_hours: e.target.value })} /></div>
-      <div><label>Contractor visibility (OD-03)</label><select value={settings.contractor_visibility} onChange={e => setSettings({ ...settings, contractor_visibility: e.target.value })}><option value="PROJECT">All project RFIs</option><option value="OWN">Own submissions only</option></select></div>
-      <div><label>Inspectors may read register (OD-04)</label><select value={String(settings.inspector_register_access)} onChange={e => setSettings({ ...settings, inspector_register_access: e.target.value === 'true' })}><option value="true">Yes (read-only)</option><option value="false">No – assigned RFIs only</option></select></div>
-      <div><label>Inspectors may export</label><select value={String(settings.inspector_export)} onChange={e => setSettings({ ...settings, inspector_export: e.target.value === 'true' })}><option value="false">No</option><option value="true">Yes</option></select></div>
-      <div><label>Overdue after (hours)</label><input type="number" value={settings.overdue_hours} onChange={e => setSettings({ ...settings, overdue_hours: e.target.value })} /></div>
-    </div>
-      <div style={{ marginTop: 12 }}><label>DOC_03 disposition options (OD-06, JSON – subject to client approval)</label><textarea rows={8} className="mono" style={{ fontSize: 12 }} value={settings._dispositions ?? JSON.stringify(settings.dispositions, null, 2)} onChange={e => setSettings({ ...settings, _dispositions: e.target.value })} /></div>
-      <div style={{ marginTop: 12 }}><button className="btn" onClick={saveSettings}>Save settings</button></div></div>}
+    {sel && <div className="notice info">Workflow, visibility and attachment settings for {sel.code} are on the <a className="link" href="/configuration">Configuration</a> page.</div>}
   </>;
 }

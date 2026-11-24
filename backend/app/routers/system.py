@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Rfi, ReviewerRule, Notification, Project, ProjectUser, RfiSummary, ReviewerAssignment, AuditLog, RfiAmendment
+from app.models import User, Rfi, ReviewerRule, Notification, Project, ProjectUser, RfiSummary, ReviewerAssignment, AuditLog, RfiAmendment, RfiStatusHistory
 from app.schemas import ReviewerRuleCreate, ChangePasswordIn
 from app.security import current_user, verify_password, hash_password, set_session_cookies, create_access_token
 from app import authz
@@ -47,6 +47,27 @@ def brief(rows):
              'current_disposition': r.current_disposition, 'short_notice': r.short_notice, 'chainage_from': r.chainage_from, 'chainage_to': r.chainage_to, 'side': r.side} for r in rows]
 
 
+def batch_row(db, s):
+    """One DOC_01 batch for the management queue: requester, first inspection, RFI count, short notice and the next management action."""
+    rows = list(db.scalars(select(Rfi).where(Rfi.summary_id == s.id)))
+    by = db.get(User, s.submitted_by)
+    first = min(((r.inspection_date, r.inspection_time or '') for r in rows if r.inspection_date), default=None)
+    statuses = {r.workflow_status for r in rows}
+    if statuses & {'SUBMITTED', 'ACTIVATED'}:
+        nxt = 'Review list' if not s.received_at else 'Assign inspectors'
+    elif 'AWAITING_DECISION' in statuses:
+        nxt = 'Final disposition'
+    elif 'UNDER_REVIEW' in statuses:
+        nxt = 'Monitor sequence'
+    else:
+        nxt = 'None'
+    return {'id': s.id, 'summary_reference': s.summary_reference, 'submitted_at': s.submitted_at, 'received_at': s.received_at,
+            'requested_by': s.contractor_rep_name or (by.full_name if by else None), 'rfi_count': len(rows),
+            'short_notice': sum(1 for r in rows if r.short_notice), 'first_inspection_date': first[0] if first else None,
+            'first_inspection_time': first[1] if first else None, 'next_action': nxt,
+            'status': 'In review' if statuses & {'UNDER_REVIEW', 'AWAITING_DECISION'} else s.workflow_status.title()}
+
+
 @router.get('/dashboard')
 def dashboard(project_id: int, db: Session = Depends(get_db), u: User = Depends(current_user)):
     """Role-specific dashboard for one project (SRS 12 Usability, brief section 8)."""
@@ -55,14 +76,15 @@ def dashboard(project_id: int, db: Session = Depends(get_db), u: User = Depends(
     base = [Rfi.project_id == project_id, Rfi.record_state == 'ACTIVE']
     by_wf = dict(db.execute(select(Rfi.workflow_status, func.count()).where(*base).group_by(Rfi.workflow_status)).all())
     by_dec = dict(db.execute(select(Rfi.current_decision, func.count()).where(*base).group_by(Rfi.current_decision)).all())
-    out = {'role': role, 'category': authz.category(role), 'project': {'id': p.id, 'code': p.code, 'name': p.name},
+    out = {'role': role, 'category': authz.category(role), 'project': {'id': p.id, 'code': p.code, 'name': p.name}, 'notice_policy': st['notice_policy'],
            'counts': {'total': sum(by_wf.values()), 'by_workflow': by_wf, 'by_decision': {k or 'NONE': v for k, v in by_dec.items()}}}
     cutoff = datetime.utcnow() - timedelta(hours=st['overdue_hours'])
     if role in authz.MANAGEMENT or role == authz.ADMIN:
-        out['new_batches'] = [{'id': s.id, 'summary_reference': s.summary_reference, 'submitted_at': s.submitted_at, 'received_at': s.received_at,
-                               'rfi_count': db.scalar(select(func.count()).select_from(Rfi).where(Rfi.summary_id == s.id)),
-                               'short_notice': db.scalar(select(func.count()).select_from(Rfi).where(Rfi.summary_id == s.id, Rfi.short_notice == True))}
-                              for s in db.scalars(select(RfiSummary).where(RfiSummary.project_id == project_id, RfiSummary.workflow_status == 'SUBMITTED').order_by(RfiSummary.submitted_at.desc()).limit(20))]
+        out['new_batches'] = [batch_row(db, s) for s in db.scalars(select(RfiSummary).where(RfiSummary.project_id == project_id, RfiSummary.workflow_status == 'SUBMITTED')
+                                                                           .order_by(RfiSummary.submitted_at.desc()).limit(20))]
+        week = datetime.utcnow() - timedelta(days=7)
+        out['completed_this_week'] = db.scalar(select(func.count()).select_from(Rfi).join(RfiStatusHistory, RfiStatusHistory.rfi_id == Rfi.id)
+                                               .where(*base, RfiStatusHistory.workflow_status == 'COMPLETED', RfiStatusHistory.created_at >= week)) or 0
         out['awaiting_assignment'] = brief(db.scalars(select(Rfi).where(*base, Rfi.workflow_status.in_(['SUBMITTED', 'ACTIVATED'])).order_by(Rfi.inspection_date, Rfi.id).limit(50)))
         out['under_review'] = brief(db.scalars(select(Rfi).where(*base, Rfi.workflow_status == 'UNDER_REVIEW').order_by(Rfi.inspection_date).limit(50)))
         out['awaiting_decision'] = brief(db.scalars(select(Rfi).where(*base, Rfi.workflow_status == 'AWAITING_DECISION').order_by(Rfi.updated_at).limit(50)))

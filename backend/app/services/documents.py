@@ -22,6 +22,7 @@ from app.config import settings as app_settings
 from app.models import Project, RfiSummary, ReviewerAssignment, Review, Decision, User, IssuedDocument, Rfi, Attachment, ManagementRemark
 from app.project_settings import get_settings, disposition, DOC03_WORK_CATEGORIES
 from app.services.workflow import parse_categories, STATUS_LABELS, display_requested_date, LEGACY_FILE_UNAVAILABLE
+from app.authz import ROLE_LABELS
 
 SS = getSampleStyleSheet()
 P7 = ParagraphStyle('p7', parent=SS['Normal'], fontSize=7, leading=8.5)
@@ -209,14 +210,14 @@ def evidence_index(db, r: Rfi, W) -> list:
     if remarks:
         rows = [[p('Management remark', P8B), p('By', P8B), p('Date', P8B), p('Remark', P8B)]]
         for m in remarks:
-            rows.append([p(STAGE_TEXT.get(m.stage, m.stage), P7), p(f'{m.author_name_snapshot or nm.get(m.author_id, "")} ({m.author_role})', P7), p(fmt_dt(m.submitted_at), P7), p(m.body, P7)])
+            rows.append([p(STAGE_TEXT.get(m.stage, m.stage), P7), p(f'{m.author_name_snapshot or nm.get(m.author_id, "")} ({ROLE_LABELS.get(m.author_role, m.author_role)})', P7), p(fmt_dt(m.submitted_at), P7), p(m.body, P7)])
         t = Table(rows, colWidths=[W * .17, W * .2, W * .13, W * .5], repeatRows=1)
         t.setStyle(TableStyle(GRID + [('BACKGROUND', (0, 0), (-1, 0), SHADE)])); out += [t, Spacer(1, 2 * mm)]
     if files:
         rows = [[p('#', P8B), p('Attachment index - stage', P8B), p('File', P8B), p('Added by', P8B), p('Uploaded', P8B), p('SHA-256', P8B)]]
         for i, f in enumerate(files, 1):
             rows.append([p(i, P7), p(stage_text(f), P7), p(f'{f.original_name} ({max(1, round((f.size_bytes or 0) / 1024))} KB)' + (f' v{f.version_no}' if (f.version_no or 1) > 1 else ''), P7),
-                         p(f'{nm.get(f.uploaded_by, "")} ({f.author_role or "-"})', P7), p(fmt_dt(f.uploaded_at), P7), p((f.sha256 or 'not recorded')[:32], P7)])
+                         p(f'{nm.get(f.uploaded_by, "")} ({ROLE_LABELS.get(f.author_role or "", f.author_role or "-")})', P7), p(fmt_dt(f.uploaded_at), P7), p((f.sha256 or 'not recorded')[:32], P7)])
         t = Table(rows, colWidths=[W * .04, W * .17, W * .3, W * .19, W * .12, W * .18], repeatRows=1)
         t.setStyle(TableStyle(GRID + [('BACKGROUND', (0, 0), (-1, 0), SHADE)])); out.append(t)
         out.append(Paragraph('Original files are kept in RFIMS and are released according to project and record permissions. The SHA-256 value identifies each file exactly.', P7))

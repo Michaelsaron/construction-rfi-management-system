@@ -38,6 +38,7 @@ class RegisterFilter:
     include_inactive: bool = False
     sort: str = 'id'
     dir: str = 'desc'
+    rfi_no: str | None = None   # partial RFI No. match (screen filter); rfi_number stays exact
 
     def active(self) -> dict:
         skip = {'sort', 'dir'}
@@ -103,6 +104,7 @@ def register_query(db, user, f: RegisterFilter, for_export: bool = False):
     if f.provenance: s = s.where(Rfi.provenance == f.provenance)
     if f.short_notice is not None: s = s.where(Rfi.short_notice == f.short_notice)
     if f.rfi_number: s = s.where(Rfi.rfi_number == f.rfi_number.strip())
+    if f.rfi_no: s = s.where(Rfi.rfi_number.like(f'%{f.rfi_no.strip()}%'))
     if f.inspector_id:
         s = s.where(Rfi.id.in_(select(ReviewerAssignment.rfi_id).where(ReviewerAssignment.user_id == f.inspector_id, ReviewerAssignment.status != 'REPLACED')))
     if f.submitted_by:
